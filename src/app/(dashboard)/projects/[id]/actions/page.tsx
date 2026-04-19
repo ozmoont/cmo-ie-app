@@ -20,7 +20,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
-import { PLAN_LIMITS, type DraftOutputType } from "@/lib/types";
+import type { DraftOutputType } from "@/lib/types";
 import { LoadingPhrases } from "@/components/ui/loading-phrases";
 
 interface Action {
@@ -206,7 +206,7 @@ export default function ActionsPage() {
           draft: data.draft,
           draftOutputType: outputType,
         }));
-      } catch (err) {
+      } catch {
         setBriefModal((prev) => ({
           ...prev,
           loading: false,

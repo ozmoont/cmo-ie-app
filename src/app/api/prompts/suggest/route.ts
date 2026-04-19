@@ -42,7 +42,6 @@ async function fetchSiteContext(
     const chunks: Uint8Array[] = [];
     let total = 0;
     const MAX = 200_000;
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -124,7 +123,9 @@ async function fetchSiteContext(
 
 export async function POST(request: Request) {
   try {
-    let { brandName, websiteUrl, projectId } = await request.json();
+    const body = await request.json();
+    const { projectId } = body;
+    let { brandName, websiteUrl } = body;
 
     // If projectId is provided but brand/website aren't, fetch from project
     if (projectId && (!brandName || !websiteUrl)) {

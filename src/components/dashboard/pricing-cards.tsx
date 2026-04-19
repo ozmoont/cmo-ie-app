@@ -82,7 +82,7 @@ export function PricingCards({ currentPlan }: PricingCardsProps) {
 
       const { url } = await response.json();
       if (url) {
-        window.location.href = url;
+        window.location.assign(url);
       }
     } catch (error) {
       console.error("Checkout error:", error);
@@ -103,7 +103,7 @@ export function PricingCards({ currentPlan }: PricingCardsProps) {
 
       const { url } = await response.json();
       if (url) {
-        window.location.href = url;
+        window.location.assign(url);
       }
     } catch (error) {
       console.error("Portal error:", error);

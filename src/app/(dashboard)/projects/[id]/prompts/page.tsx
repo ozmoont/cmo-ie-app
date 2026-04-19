@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -51,9 +51,27 @@ export default function PromptsPage() {
     setLoading(false);
   }, [projectId]);
 
+  // Load prompts on mount. setState runs after await, not synchronously.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPrompts();
   }, [fetchPrompts]);
+
+  // "Saved" pulse — fired imperatively from each mutation. Avoids the
+  // effect-tracking-list-length pattern that triggers cascading-render
+  // warnings and makes the trigger explicit.
+  const [justSaved, setJustSaved] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerSaved = useCallback(() => {
+    setJustSaved(true);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setJustSaved(false), 2000);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   const addPrompt = async () => {
     if (!newPromptText.trim()) return;
@@ -71,6 +89,7 @@ export default function PromptsPage() {
       const newPrompt = await res.json();
       setPrompts((prev) => [newPrompt, ...prev]);
       setNewPromptText("");
+      triggerSaved();
     }
   };
 
@@ -81,6 +100,7 @@ export default function PromptsPage() {
     );
     if (res.ok) {
       setPrompts((prev) => prev.filter((p) => p.id !== id));
+      triggerSaved();
     }
   };
 
@@ -98,6 +118,7 @@ export default function PromptsPage() {
       const newPrompt = await res.json();
       setPrompts((prev) => [newPrompt, ...prev]);
       setAddedSuggestions((prev) => new Set(prev).add(suggestion.text));
+      triggerSaved();
     }
   };
 
@@ -126,18 +147,6 @@ export default function PromptsPage() {
       setLoadingSuggestions(false);
     }
   };
-
-  const [justSaved, setJustSaved] = useState(false);
-  const [promptCount, setPromptCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (promptCount !== null && prompts.length !== promptCount) {
-      setJustSaved(true);
-      const t = setTimeout(() => setJustSaved(false), 2000);
-      return () => clearTimeout(t);
-    }
-    setPromptCount(prompts.length);
-  }, [prompts.length, promptCount]);
 
   const categoryOptions: PromptCategory[] = [
     "awareness",

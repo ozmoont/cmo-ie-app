@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,11 +23,7 @@ export function TeamSection() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchMembers();
-  }, []);
-
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     try {
       const res = await fetch("/api/team");
       if (res.ok) {
@@ -39,7 +35,15 @@ export function TeamSection() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Load members on mount. The setState inside fetchMembers runs after an
+  // async await, not synchronously in the effect body — safe, but the
+  // react-hooks/set-state-in-effect rule flags it on static analysis.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchMembers();
+  }, [fetchMembers]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();

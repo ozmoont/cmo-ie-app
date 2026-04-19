@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   test:
-    name: Typecheck + test
+    name: Lint, typecheck, test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -32,6 +32,9 @@ jobs:
       # https://github.com/npm/cli/issues/4828
       - name: Install dependencies
         run: npm ci --include=optional
+
+      - name: Lint
+        run: npm run lint
 
       - name: Type check
         run: npm run typecheck

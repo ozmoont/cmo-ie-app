@@ -10,7 +10,6 @@ import {
   Search,
   FileText,
   Sparkles,
-  Bot,
   Lightbulb,
 } from "lucide-react";
 

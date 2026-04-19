@@ -1,13 +1,22 @@
 import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// TIP: If you want Next.js font optimisation (self-hosted, no layout shift),
-// swap the <link> tags below for these imports and add the variables to <html>:
-//
-//   import { DM_Sans, DM_Mono } from "next/font/google";
-//   const dmSans = DM_Sans({ variable: "--font-dm-sans", subsets: ["latin"], weight: ["400","500","600","700"] });
-//   const dmMono = DM_Mono({ variable: "--font-dm-mono", subsets: ["latin"], weight: ["400","500"] });
-//   <html className={`${dmSans.variable} ${dmMono.variable} h-full antialiased`}>
+// Fonts are loaded via next/font so they're self-hosted at build time —
+// no layout shift, no @next/next/no-page-custom-font lint warning, and
+// no runtime dependency on Google Fonts. Variables are wired into
+// Tailwind's font-sans / font-mono via globals.css.
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
+});
 
 const siteUrl = "https://cmo.ie";
 const ogImage = `${siteUrl}/og.png`;
@@ -94,19 +103,11 @@ export default function RootLayout({
     // browser extensions (reader modes, translators, remote-frame agents)
     // inject attributes like `__gcrremoteframetoken` onto <html> before
     // React hydrates, which would otherwise throw a hydration warning.
-    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <body className="min-h-full flex flex-col bg-navy text-white font-sans">
         {children}
         <script dangerouslySetInnerHTML={{ __html: hydrationFlagScript }} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -36,9 +36,28 @@ export default function CompetitorsPage() {
     setLoading(false);
   }, [projectId]);
 
+  // Load competitors on mount. setState happens after await, not
+  // synchronously in the effect body.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCompetitors();
   }, [fetchCompetitors]);
+
+  // "Saved" pulse — fired imperatively after each successful mutation
+  // rather than via an effect tracking list length, which avoids the
+  // cascading-render warning and makes the trigger explicit.
+  const [justSaved, setJustSaved] = useState(false);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerSaved = useCallback(() => {
+    setJustSaved(true);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setJustSaved(false), 2000);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   const addCompetitor = async () => {
     if (!newName.trim()) return;
@@ -55,6 +74,7 @@ export default function CompetitorsPage() {
       setCompetitors((prev) => [...prev, comp]);
       setNewName("");
       setNewUrl("");
+      triggerSaved();
     }
   };
 
@@ -65,19 +85,9 @@ export default function CompetitorsPage() {
     );
     if (res.ok) {
       setCompetitors((prev) => prev.filter((c) => c.id !== id));
+      triggerSaved();
     }
   };
-
-  const [justSaved, setJustSaved] = useState(false);
-  const [compCount, setCompCount] = useState<number | null>(null);
-  useEffect(() => {
-    if (compCount !== null && competitors.length !== compCount) {
-      setJustSaved(true);
-      const t = setTimeout(() => setJustSaved(false), 2000);
-      return () => clearTimeout(t);
-    }
-    setCompCount(competitors.length);
-  }, [competitors.length, compCount]);
 
   return (
     <DashboardShell

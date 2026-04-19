@@ -50,9 +50,14 @@ export function DashboardShell({
 
   // Defer email rendering to avoid Cloudflare email obfuscation
   // breaking React hydration (CF rewrites email strings in HTML,
-  // causing a server/client mismatch that silently kills hydration)
+  // causing a server/client mismatch that silently kills hydration).
+  // The setState here is the entire point of the effect — the rule's
+  // cascading-render warning doesn't apply to a one-shot mount flag.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
