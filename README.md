@@ -30,17 +30,12 @@ Open http://localhost:3000.
 
 ### Environment variables
 
-At a minimum the app expects:
+See [`.env.example`](./.env.example) for the full list. At a minimum the app expects Supabase, Stripe, and at least one model adapter API key:
 
-```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-ANTHROPIC_API_KEY=
-STRIPE_SECRET_KEY=
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-STRIPE_WEBHOOK_SECRET=
-```
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
+- `ANTHROPIC_API_KEY` (Claude adapter + brand-mention analysis)
+- Optionally: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `PERPLEXITY_API_KEY` — any model without a key is skipped on runs rather than failing.
 
 Treat `.env.local` as secret — it is gitignored.
 
@@ -54,6 +49,8 @@ Treat `.env.local` as secret — it is gitignored.
 | `npm run lint` | ESLint (Next.js config) |
 | `npm run test` | Run Vitest in watch mode |
 | `npm run test:run` | Run Vitest once (CI) |
+| `npm run typecheck` | Strict TypeScript check |
+| `npm run smoke:models` | Exercise each configured model adapter with a real API call |
 
 ## Project structure
 
@@ -68,15 +65,33 @@ src/
     opengraph-image.tsx edge OG image
   components/           dashboard + ui (shadcn-style) components
   lib/
+    models/             per-provider adapters (Claude, ChatGPT, Gemini,
+                        Perplexity) + shared types + router
     billing.ts          Stripe helpers
     queries.ts          Supabase query helpers
-    run-engine.ts       prompt-run orchestration
+    run-engine.ts       prompt-run orchestration (uses lib/models)
     supabase/           SSR client + server client
     types.ts            shared types
     format.ts, utils.ts
+scripts/
+  smoke-models.ts       `npm run smoke:models` — exercise every adapter
 supabase/
-  migrations/           001_initial_schema → 004_org_api_keys
+  migrations/           001 → 005 (005 is the simulation-to-real cutover)
+docs/
+  peec-ai-competitive-review.md
+  execution-plan.md
+  data-collection-sources.md
 ```
+
+## Data pipeline
+
+Every (prompt × model) combination goes through:
+
+1. **Adapter query** (`src/lib/models/*.ts`) — real call to the provider's API with web search / grounding enabled. Returns the response text plus a list of source URLs, each flagged as `cited_inline` or merely retrieved.
+2. **Analysis** (`src/lib/run-engine.ts` — Claude Haiku) — extracts `brand_mentioned`, `mention_position`, and `sentiment` from the response text.
+3. **Persist** — `results` row + one `citations` row per source with `was_cited_inline`, `is_brand_domain`, `is_competitor_domain`, and `position`.
+
+Adding a new model: implement `ModelAdapter` in `src/lib/models/{name}.ts`, register it in `src/lib/models/index.ts`, and extend the `AIModel` enum in `src/lib/types.ts`. See [`docs/data-collection-sources.md`](./docs/data-collection-sources.md) for the audit that led to this pipeline.
 
 ## Database
 

@@ -1,17 +1,22 @@
 /**
  * CMO.ie Daily Run Engine
  *
- * Executes visibility checks across AI models for a project's prompts.
+ * Executes real visibility checks across AI models for a project's prompts.
  * For each prompt × model combination:
- *   1. Queries the AI model
- *   2. Checks if the brand is mentioned
- *   3. Extracts sentiment
- *   4. Extracts cited URLs/domains
- *   5. Stores results + citations in Supabase
+ *   1. Calls the real provider via its adapter (Claude, ChatGPT, Gemini,
+ *      Perplexity — all with web search / grounding enabled).
+ *   2. Analyses the returned text with Claude to extract brand-mention,
+ *      position, and sentiment.
+ *   3. Persists results + sources (cited inline vs retrieved) to Supabase.
+ *
+ * Contrast with the previous version (pre-migration 005) which used
+ * Claude Haiku to *roleplay* as each model. See
+ * docs/data-collection-sources.md for the audit that drove the rewrite.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveAdapters, AdapterError, type ModelSource } from "@/lib/models";
 import type { AIModel, Prompt, Competitor } from "@/lib/types";
 import { MODEL_LABELS } from "@/lib/types";
 
@@ -20,21 +25,27 @@ import { MODEL_LABELS } from "@/lib/types";
 interface RunResult {
   prompt_id: string;
   model: AIModel;
+  model_version: string;
   brand_mentioned: boolean;
   mention_position: number | null;
   sentiment: "positive" | "neutral" | "negative" | null;
   response_snippet: string;
-  citations: {
-    url: string;
-    domain: string;
+  sources: (ModelSource & {
     is_brand_domain: boolean;
     is_competitor_domain: boolean;
-    position: number;
-  }[];
+  })[];
 }
 
 export type ProgressCallback = (event: {
-  type: "start" | "prompt_start" | "model_done" | "model_error" | "saving" | "complete" | "error";
+  type:
+    | "start"
+    | "prompt_start"
+    | "model_done"
+    | "model_error"
+    | "model_skipped"
+    | "saving"
+    | "complete"
+    | "error";
   message: string;
   current?: number;
   total?: number;
@@ -47,53 +58,124 @@ export type ProgressCallback = (event: {
   };
 }) => void;
 
-// ── System Prompts ──
+// ── Analysis prompt ──
+// Kept on Claude Haiku — it's a structured-extraction task where Haiku
+// is both fast and cheap enough. We only ask for brand mention, position
+// and sentiment now; source extraction is handled natively by each
+// adapter so we don't need Claude to re-parse URLs.
 
-const QUERY_SYSTEM = `You are simulating how different AI search engines respond to user queries.
-You will be told which AI model to simulate (ChatGPT, Perplexity, Gemini, Google AI Overviews, or Claude).
-Respond AS that model would - with the style, format, and citation patterns typical of that model.
+const ANALYSIS_SYSTEM = `You analyse an AI model's response to a marketing-research prompt and return structured JSON about brand mentions.
 
-Important:
-- Perplexity always cites sources with URLs
-- ChatGPT gives conversational answers, sometimes with recommendations
-- Google AI Overviews gives concise summaries with source links
-- Gemini gives detailed answers with occasional citations
-- Claude gives thorough, balanced answers
-
-Respond naturally to the user's question. Include real-sounding company names, websites, and recommendations that would be typical for this type of query in the Irish market. Do NOT artificially insert or exclude any particular brand - respond as the real model would based on what's publicly known.`;
-
-const ANALYSIS_SYSTEM = `You analyse AI model responses to detect brand mentions, sentiment, and citations.
-
-Given a brand name, competitor names, and an AI response, return JSON (no markdown fences):
+Given a brand name, a list of tracked competitor brands, and the response text, return ONLY the following JSON (no markdown fences):
 {
   "brand_mentioned": boolean,
-  "mention_position": number | null (1 = first mentioned, 2 = second, etc. null if not mentioned),
-  "sentiment": "positive" | "neutral" | "negative" | null (null if brand not mentioned),
-  "citations": [
-    {
-      "url": string (full URL if present, or construct from domain),
-      "domain": string (e.g. "acmelegal.ie"),
-      "is_brand_domain": boolean,
-      "is_competitor_domain": boolean,
-      "position": number (order of appearance, 1-indexed)
-    }
-  ]
+  "mention_position": number | null,
+  "sentiment": "positive" | "neutral" | "negative" | null
 }
 
 Rules:
-- brand_mentioned is true if the brand name appears anywhere in the response (case-insensitive)
-- mention_position counts all companies/brands mentioned in order
-- sentiment is about how the brand is portrayed (positive = recommended, neutral = just listed, negative = criticized)
-- Extract ALL URLs and domains mentioned, even if just as text references
-- Check each domain against the brand's website and competitor websites`;
+- brand_mentioned is true if the brand name (or a close variant) appears anywhere in the text.
+- mention_position is 1-indexed across ALL brands mentioned in the text (including brands NOT in the tracked competitor list). Set to null if brand_mentioned is false.
+- sentiment reflects how the response describes the brand. "positive" = recommended, praised, trusted. "neutral" = listed factually, mentioned without evaluative language. "negative" = criticised, warned against, contrasted unfavourably. Set to null if brand_mentioned is false.
+- Do NOT return citations or URLs; those are captured upstream.`;
 
-const MODEL_STYLES: Record<AIModel, string> = {
-  chatgpt: "ChatGPT (conversational, helpful, sometimes recommends specific companies)",
-  perplexity: "Perplexity (always cites sources with [1] [2] style references and URLs, research-focused)",
-  google_aio: "Google AI Overviews (concise summary, pulls from top search results, shows source links)",
-  gemini: "Gemini (detailed, balanced, occasionally cites sources)",
-  claude: "Claude (thorough, balanced, mentions companies when relevant)",
-};
+// Helper: normalise a hostname for comparison (no www, lowercase).
+function normDomain(u: string | null | undefined): string | null {
+  if (!u) return null;
+  try {
+    const host = new URL(u.startsWith("http") ? u : `https://${u}`).hostname;
+    return host.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return u.replace(/^https?:\/\//, "").replace(/^www\./, "").toLowerCase();
+  }
+}
+
+function tagSources(
+  sources: ModelSource[],
+  brandDomain: string | null,
+  competitorDomains: { domain: string }[]
+): RunResult["sources"] {
+  const compSet = new Set(
+    competitorDomains.map((c) => c.domain).filter((d): d is string => Boolean(d))
+  );
+  return sources.map((s) => {
+    const d = s.domain.toLowerCase();
+    return {
+      ...s,
+      is_brand_domain: Boolean(brandDomain && d === brandDomain),
+      is_competitor_domain: compSet.has(d),
+    };
+  });
+}
+
+async function analyseResponse(
+  anthropic: Anthropic,
+  brandName: string,
+  competitorNames: string[],
+  responseText: string
+): Promise<{
+  brand_mentioned: boolean;
+  mention_position: number | null;
+  sentiment: "positive" | "neutral" | "negative" | null;
+}> {
+  if (!responseText.trim()) {
+    return { brand_mentioned: false, mention_position: null, sentiment: null };
+  }
+
+  const analysis = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 400,
+    system: ANALYSIS_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `Brand: "${brandName}"
+Competitors: ${competitorNames.length ? competitorNames.join(", ") : "none"}
+
+Response to analyse:
+---
+${responseText.slice(0, 6000)}
+---
+
+Return JSON only.`,
+      },
+    ],
+  });
+
+  const raw =
+    analysis.content.find((b) => b.type === "text")?.type === "text"
+      ? (
+          analysis.content.find((b) => b.type === "text") as {
+            type: "text";
+            text: string;
+          }
+        ).text
+      : "{}";
+
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      brand_mentioned: Boolean(parsed.brand_mentioned),
+      mention_position:
+        typeof parsed.mention_position === "number"
+          ? parsed.mention_position
+          : null,
+      sentiment:
+        parsed.sentiment === "positive" ||
+        parsed.sentiment === "neutral" ||
+        parsed.sentiment === "negative"
+          ? parsed.sentiment
+          : null,
+    };
+  } catch {
+    return { brand_mentioned: false, mention_position: null, sentiment: null };
+  }
+}
 
 export async function executeRun(
   projectId: string,
@@ -109,27 +191,42 @@ export async function executeRun(
     apiKey: process.env.ANTHROPIC_API_KEY!,
   });
 
-  const activePrompts = prompts.filter((p) => p.is_active);
-  const totalSteps = activePrompts.length * models.length;
-
   const emit = onProgress ?? (() => {});
+
+  // Resolve which of the requested models we can actually run.
+  const { available, missing, unimplemented } = resolveAdapters(models);
+
+  if (available.length === 0) {
+    throw new Error(
+      `No model adapters available. Missing API keys for: ${[
+        ...missing,
+        ...unimplemented,
+      ].join(", ") || "all requested models"}`
+    );
+  }
+
+  const activePrompts = prompts.filter((p) => p.is_active);
+  const totalSteps = activePrompts.length * available.length;
+  const today = new Date().toISOString().split("T")[0];
 
   emit({
     type: "start",
-    message: `Starting run: ${activePrompts.length} prompts × ${models.length} models = ${totalSteps} checks`,
+    message: `Starting run: ${activePrompts.length} prompts × ${available.length} models = ${totalSteps} checks${
+      missing.length || unimplemented.length
+        ? ` (skipping: ${[...missing, ...unimplemented].join(", ")})`
+        : ""
+    }`,
     total: totalSteps,
     current: 0,
   });
 
-  const today = new Date().toISOString().split("T")[0];
-
-  // 1. Check if a run already exists for today
+  // Upsert today's run row.
   const { data: existingRun } = await admin
     .from("daily_runs")
     .select("id, status")
     .eq("project_id", projectId)
     .eq("run_date", today)
-    .single();
+    .maybeSingle();
 
   let run: { id: string };
 
@@ -138,18 +235,19 @@ export async function executeRun(
       .from("results")
       .select("id")
       .eq("run_id", existingRun.id);
-
     if (oldResults && oldResults.length > 0) {
-      const oldResultIds = oldResults.map((r) => r.id);
-      await admin.from("citations").delete().in("result_id", oldResultIds);
+      const ids = oldResults.map((r) => r.id);
+      await admin.from("citations").delete().in("result_id", ids);
       await admin.from("results").delete().eq("run_id", existingRun.id);
     }
-
     await admin
       .from("daily_runs")
-      .update({ status: "running", started_at: new Date().toISOString(), completed_at: null })
+      .update({
+        status: "running",
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      })
       .eq("id", existingRun.id);
-
     run = { id: existingRun.id };
   } else {
     const { data: newRun, error: runError } = await admin
@@ -162,7 +260,6 @@ export async function executeRun(
       })
       .select()
       .single();
-
     if (runError || !newRun) {
       throw new Error(`Failed to create run: ${runError?.message}`);
     }
@@ -170,11 +267,16 @@ export async function executeRun(
   }
 
   const runId = run.id;
+  const brandDomain = normDomain(websiteUrl);
+  const competitorDomains = competitors
+    .map((c) => ({ domain: normDomain(c.website_url) ?? "" }))
+    .filter((c) => c.domain);
+  const competitorNames = competitors.map((c) => c.name);
+
   const allResults: RunResult[] = [];
   let stepCount = 0;
 
   try {
-    // 2. For each prompt × model, query and analyse
     for (const prompt of activePrompts) {
       emit({
         type: "prompt_start",
@@ -184,135 +286,54 @@ export async function executeRun(
         detail: { prompt: prompt.text },
       });
 
-      for (const model of models) {
+      for (const adapter of available) {
         stepCount++;
-        const modelLabel = MODEL_LABELS[model] ?? model;
+        const modelLabel = MODEL_LABELS[adapter.name] ?? adapter.name;
 
         try {
-          // ── Cache check: reuse recent result for same prompt text + model ──
-          const cacheHoursAgo = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString();
-          const { data: cachedResults } = await admin
-            .from("results")
-            .select("brand_mentioned, mention_position, sentiment, response_snippet, id")
-            .eq("prompt_id", prompt.id)
-            .eq("model", model)
-            .gte("created_at", cacheHoursAgo)
-            .order("created_at", { ascending: false })
-            .limit(1);
-
-          if (
-            cachedResults &&
-            cachedResults.length > 0 &&
-            cachedResults[0].response_snippet &&
-            !cachedResults[0].response_snippet.startsWith("[Error")
-          ) {
-            const cached = cachedResults[0];
-            // Fetch cached citations too
-            const { data: cachedCitations } = await admin
-              .from("citations")
-              .select("url, domain, is_brand_domain, is_competitor_domain, position")
-              .eq("result_id", cached.id);
-
-            allResults.push({
-              prompt_id: prompt.id,
-              model,
-              brand_mentioned: cached.brand_mentioned,
-              mention_position: cached.mention_position,
-              sentiment: cached.sentiment,
-              response_snippet: cached.response_snippet ?? "",
-              citations: (cachedCitations ?? []).map((c) => ({
-                url: c.url,
-                domain: c.domain,
-                is_brand_domain: c.is_brand_domain,
-                is_competitor_domain: c.is_competitor_domain,
-                position: c.position ?? 0,
-              })),
-            });
-
-            emit({
-              type: "model_done",
-              message: `${modelLabel}: Cached - ${cached.brand_mentioned ? "Mentioned" : "Not mentioned"}`,
-              current: stepCount,
-              total: totalSteps,
-              detail: {
-                prompt: prompt.text,
-                model: modelLabel,
-                brand_mentioned: cached.brand_mentioned,
-                sentiment: cached.sentiment ?? undefined,
-              },
-            });
-            continue; // Skip API call
-          }
-
-          // Step A: Simulate the AI model's response
-          const queryResponse = await anthropic.messages.create({
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 800,
-            system: QUERY_SYSTEM,
-            messages: [
-              {
-                role: "user",
-                content: `Simulate a response from ${MODEL_STYLES[model]}.
-
-The user asked: "${prompt.text}"
-
-Context: This is about the Irish market. The brand we're tracking is "${brandName}" (website: ${websiteUrl ?? "unknown"}). Respond naturally as the model would.`,
-              },
-            ],
+          // Step A — real provider call with web search.
+          const modelResponse = await adapter.query(prompt.text, {
+            country: "IE", // TODO: per-prompt country once schema lands
+            marketContext: "Irish market",
           });
 
-          const responseText =
-            queryResponse.content.find((b) => b.type === "text")?.type === "text"
-              ? (queryResponse.content.find((b) => b.type === "text") as { type: "text"; text: string }).text
-              : "";
+          // Step B — Claude analysis for brand + sentiment + position.
+          // (Source extraction is already done by the adapter.)
+          const analysis = await analyseResponse(
+            anthropic,
+            brandName,
+            competitorNames,
+            modelResponse.text
+          );
 
-          // Step B: Analyse the response
-          const analysisResponse = await anthropic.messages.create({
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 800,
-            system: ANALYSIS_SYSTEM,
-            messages: [
-              {
-                role: "user",
-                content: `Brand name: "${brandName}"
-Brand website: "${websiteUrl ?? "unknown"}"
-Competitors: ${competitors.map((c) => `${c.name} (${c.website_url ?? "unknown"})`).join(", ") || "none"}
-
-AI model response to analyse:
----
-${responseText}
----
-
-Return the analysis JSON.`,
-              },
-            ],
-          });
-
-          let analysisText =
-            analysisResponse.content.find((b) => b.type === "text")?.type === "text"
-              ? (analysisResponse.content.find((b) => b.type === "text") as { type: "text"; text: string }).text
-              : "{}";
-
-          // Strip markdown code fences if Haiku wraps JSON in ```json ... ```
-          analysisText = analysisText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-
-          const analysis = JSON.parse(analysisText);
+          const taggedSources = tagSources(
+            modelResponse.sources,
+            brandDomain,
+            competitorDomains
+          );
 
           const result: RunResult = {
             prompt_id: prompt.id,
-            model,
-            brand_mentioned: analysis.brand_mentioned ?? false,
-            mention_position: analysis.mention_position ?? null,
-            sentiment: analysis.sentiment ?? null,
-            response_snippet: responseText.slice(0, 500),
-            citations: analysis.citations ?? [],
+            model: adapter.name,
+            model_version: modelResponse.model_version,
+            brand_mentioned: analysis.brand_mentioned,
+            mention_position: analysis.mention_position,
+            sentiment: analysis.sentiment,
+            response_snippet: modelResponse.text.slice(0, 500),
+            sources: taggedSources,
           };
 
           allResults.push(result);
 
           emit({
             type: "model_done",
-            message: `${modelLabel}: ${result.brand_mentioned ? "Mentioned" : "Not mentioned"}${result.brand_mentioned && result.mention_position ? ` (position #${result.mention_position})` : ""}${result.sentiment ? `, ${result.sentiment} sentiment` : ""} - ${result.citations.length} citations found`,
+            message: `${modelLabel}: ${
+              result.brand_mentioned
+                ? `Mentioned${result.mention_position ? ` (position #${result.mention_position})` : ""}`
+                : "Not mentioned"
+            }${result.sentiment ? `, ${result.sentiment}` : ""} — ${
+              taggedSources.length
+            } sources (${taggedSources.filter((s) => s.cited_inline).length} cited inline)`,
             current: stepCount,
             total: totalSteps,
             detail: {
@@ -320,23 +341,30 @@ Return the analysis JSON.`,
               model: modelLabel,
               brand_mentioned: result.brand_mentioned,
               sentiment: result.sentiment ?? undefined,
-              citationCount: result.citations.length,
+              citationCount: taggedSources.length,
             },
           });
         } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
+          const errMsg =
+            err instanceof AdapterError
+              ? err.message
+              : err instanceof Error
+                ? err.message
+                : String(err);
           console.error(
-            `Run ${runId}: Error processing ${model}/${prompt.id}:`,
+            `Run ${runId}: ${adapter.name}/${prompt.id} failed:`,
             errMsg
           );
+
           allResults.push({
             prompt_id: prompt.id,
-            model,
+            model: adapter.name,
+            model_version: "error",
             brand_mentioned: false,
             mention_position: null,
             sentiment: null,
             response_snippet: `[Error: ${errMsg.slice(0, 200)}]`,
-            citations: [],
+            sources: [],
           });
 
           emit({
@@ -350,7 +378,7 @@ Return the analysis JSON.`,
       }
     }
 
-    // 3. Save results
+    // Persist results + sources.
     emit({
       type: "saving",
       message: `Saving ${allResults.length} results to database...`,
@@ -362,6 +390,7 @@ Return the analysis JSON.`,
       run_id: runId,
       prompt_id: r.prompt_id,
       model: r.model,
+      model_version: r.model_version,
       brand_mentioned: r.brand_mentioned,
       mention_position: r.mention_position,
       sentiment: r.sentiment,
@@ -377,7 +406,6 @@ Return the analysis JSON.`,
       throw new Error(`Failed to insert results: ${resultsError.message}`);
     }
 
-    // 4. Insert citations
     const citationInserts: {
       result_id: string;
       url: string;
@@ -385,22 +413,23 @@ Return the analysis JSON.`,
       is_brand_domain: boolean;
       is_competitor_domain: boolean;
       position: number;
+      was_cited_inline: boolean;
     }[] = [];
 
     for (const result of allResults) {
-      const matchedResult = insertedResults?.find(
+      const matched = insertedResults?.find(
         (ir) => ir.prompt_id === result.prompt_id && ir.model === result.model
       );
-      if (!matchedResult) continue;
-
-      for (const citation of result.citations) {
+      if (!matched) continue;
+      for (const s of result.sources) {
         citationInserts.push({
-          result_id: matchedResult.id,
-          url: citation.url,
-          domain: citation.domain,
-          is_brand_domain: citation.is_brand_domain,
-          is_competitor_domain: citation.is_competitor_domain,
-          position: citation.position,
+          result_id: matched.id,
+          url: s.url,
+          domain: s.domain,
+          is_brand_domain: s.is_brand_domain,
+          is_competitor_domain: s.is_competitor_domain,
+          position: s.position,
+          was_cited_inline: s.cited_inline,
         });
       }
     }
@@ -409,13 +438,11 @@ Return the analysis JSON.`,
       const { error: citationsError } = await admin
         .from("citations")
         .insert(citationInserts);
-
       if (citationsError) {
         console.error("Failed to insert citations:", citationsError);
       }
     }
 
-    // 5. Mark run as complete
     await admin
       .from("daily_runs")
       .update({
@@ -424,12 +451,17 @@ Return the analysis JSON.`,
       })
       .eq("id", runId);
 
-    const mentionedCount = allResults.filter((r) => r.brand_mentioned).length;
-    const visScore = Math.round((mentionedCount / allResults.length) * 100);
+    const successResults = allResults.filter(
+      (r) => !r.response_snippet.startsWith("[Error")
+    );
+    const mentioned = successResults.filter((r) => r.brand_mentioned).length;
+    const visScore = successResults.length
+      ? Math.round((mentioned / successResults.length) * 100)
+      : 0;
 
     emit({
       type: "complete",
-      message: `Run complete! Visibility score: ${visScore}% (${mentionedCount}/${allResults.length} mentions). ${citationInserts.length} citations tracked.`,
+      message: `Run complete. Visibility ${visScore}% (${mentioned}/${successResults.length} mentions). ${citationInserts.length} sources recorded across ${available.length} models.`,
       current: totalSteps,
       total: totalSteps,
     });
@@ -440,12 +472,10 @@ Return the analysis JSON.`,
       .from("daily_runs")
       .update({ status: "failed" })
       .eq("id", runId);
-
     emit({
       type: "error",
       message: err instanceof Error ? err.message : "Run failed",
     });
-
     throw err;
   }
 }

@@ -124,6 +124,7 @@ function generateResults(): Result[] {
           run_id: run.id,
           prompt_id: prompt.id,
           model,
+          model_version: null,
           brand_mentioned: mentioned,
           mention_position: mentioned
             ? Math.floor(Math.random() * 3) + 1
@@ -169,6 +170,9 @@ function generateCitations(): Citation[] {
         domain: d.domain,
         is_brand_domain: d.isBrand,
         is_competitor_domain: d.isCompetitor,
+        // Mock data: half inline, half retrieved-only — roughly matches
+        // the real ratio we see in smoke runs.
+        was_cited_inline: Math.random() > 0.5,
         position: i + 1,
         created_at: result.created_at,
       });

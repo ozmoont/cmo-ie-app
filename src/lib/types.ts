@@ -66,6 +66,8 @@ export interface Result {
   run_id: string;
   prompt_id: string;
   model: AIModel;
+  /** Concrete model identifier from the provider (e.g. gpt-4.1-2025-04-14). */
+  model_version: string | null;
   brand_mentioned: boolean;
   mention_position: number | null;
   sentiment: Sentiment | null;
@@ -80,6 +82,12 @@ export interface Citation {
   domain: string;
   is_brand_domain: boolean;
   is_competitor_domain: boolean;
+  /**
+   * True if the model explicitly cited this URL inline in the response body.
+   * False if the URL was in the model's sources/sidebar but not referenced
+   * inline — still an opportunity, but a different one.
+   */
+  was_cited_inline: boolean;
   position: number | null;
   created_at: string;
 }
