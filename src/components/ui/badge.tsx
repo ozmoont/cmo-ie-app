@@ -15,6 +15,10 @@ const badgeVariants = cva(
         neutral: "bg-slate-100 text-text-secondary",
         negative: "bg-danger/10 text-danger",
         outline: "border border-border text-text-secondary",
+        // Semantic aliases — used by the insights page. warning = brand
+        // bias / gap alerts; success = confirmed-ours labels.
+        warning: "bg-warning/10 text-warning border border-warning/30",
+        success: "bg-emerald/10 text-emerald-dark border border-emerald/30",
       },
     },
     defaultVariants: {

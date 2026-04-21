@@ -36,18 +36,45 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { name, website_url } = body;
+  const { name, website_url, display_name, tracked_name, aliases, domains } =
+    body;
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
 
+  // Derive a default domain from website_url if callers don't supply an
+  // explicit `domains` array. Keeps the legacy "just type a URL" UX
+  // working while the new schema (migration 006) stays authoritative.
+  const normDomain = (u: string | null | undefined): string | null => {
+    if (!u) return null;
+    try {
+      return new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`).hostname
+        .replace(/^www\./, "")
+        .toLowerCase();
+    } catch {
+      return null;
+    }
+  };
+  const seedDomain = normDomain(website_url);
+
   const { data, error } = await supabase
     .from("competitors")
     .insert({
       project_id: projectId,
+      // Legacy name stays populated for back-compat with older queries.
       name,
       website_url: website_url || null,
+      // Migration 006 fields. display_name + tracked_name default to
+      // `name` so the quick-add flow keeps working; caller can override.
+      display_name: display_name || name,
+      tracked_name: tracked_name || name,
+      aliases: Array.isArray(aliases) ? aliases : [],
+      domains: Array.isArray(domains)
+        ? domains
+        : seedDomain
+          ? [seedDomain]
+          : [],
     })
     .select()
     .single();

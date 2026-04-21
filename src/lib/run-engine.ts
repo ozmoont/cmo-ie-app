@@ -251,28 +251,46 @@ async function loadOrgApiKeys(
   admin: ReturnType<typeof createAdminClient>,
   projectId: string
 ): Promise<ApiKeyOverrides> {
-  const { data: project } = await admin
-    .from("projects")
-    .select("org_id")
-    .eq("id", projectId)
-    .maybeSingle();
-  if (!project?.org_id) return {};
+  // Soft-fail: if loading BYOK overrides errors (bad service_role key,
+  // network blip, table rename mid-deploy), we degrade to "use env vars"
+  // rather than taking the whole run down. loadOrgApiKeys returning {}
+  // is a legitimate "no overrides" signal the rest of the pipeline
+  // already handles cleanly.
+  try {
+    const { data: project, error: projectError } = await admin
+      .from("projects")
+      .select("org_id")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (projectError) {
+      console.error("loadOrgApiKeys: project lookup failed:", projectError);
+      return {};
+    }
+    if (!project?.org_id) return {};
 
-  const { data: org } = await admin
-    .from("organisations")
-    .select(
-      "anthropic_api_key, openai_api_key, google_api_key, perplexity_api_key"
-    )
-    .eq("id", project.org_id)
-    .maybeSingle();
-  if (!org) return {};
+    const { data: org, error: orgError } = await admin
+      .from("organisations")
+      .select(
+        "anthropic_api_key, openai_api_key, google_api_key, perplexity_api_key"
+      )
+      .eq("id", project.org_id)
+      .maybeSingle();
+    if (orgError) {
+      console.error("loadOrgApiKeys: org lookup failed:", orgError);
+      return {};
+    }
+    if (!org) return {};
 
-  const overrides: ApiKeyOverrides = {};
-  if (org.anthropic_api_key) overrides.claude = org.anthropic_api_key;
-  if (org.openai_api_key) overrides.chatgpt = org.openai_api_key;
-  if (org.google_api_key) overrides.gemini = org.google_api_key;
-  if (org.perplexity_api_key) overrides.perplexity = org.perplexity_api_key;
-  return overrides;
+    const overrides: ApiKeyOverrides = {};
+    if (org.anthropic_api_key) overrides.claude = org.anthropic_api_key;
+    if (org.openai_api_key) overrides.chatgpt = org.openai_api_key;
+    if (org.google_api_key) overrides.gemini = org.google_api_key;
+    if (org.perplexity_api_key) overrides.perplexity = org.perplexity_api_key;
+    return overrides;
+  } catch (err) {
+    console.error("loadOrgApiKeys unexpected error:", err);
+    return {};
+  }
 }
 
 /**

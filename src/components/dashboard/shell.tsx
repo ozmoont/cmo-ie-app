@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   Zap,
+  Search,
 } from "lucide-react";
 
 interface DashboardShellProps {
@@ -31,6 +32,7 @@ const mainNav = [
 function projectNav(id: string) {
   return [
     { label: "Overview", href: `/projects/${id}`, icon: BarChart3 },
+    { label: "Insights", href: `/projects/${id}/insights`, icon: Search },
     { label: "Prompts", href: `/projects/${id}/prompts`, icon: MessageSquare },
     { label: "Competitors", href: `/projects/${id}/competitors`, icon: Users },
     { label: "Actions", href: `/projects/${id}/actions`, icon: Zap },
