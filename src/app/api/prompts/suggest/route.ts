@@ -1,160 +1,140 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  extractBrandProfile,
+  type BrandProfile,
+} from "@/lib/brand-profile";
 
 /**
- * Fetches a website and extracts enough text to let Claude infer the
- * industry. Claude can't browse, so without this the model is forced to
- * guess what a brand does from its name alone - which is why prompts
- * came back generic/off-industry for anything that isn't a household
- * name.
+ * POST /api/prompts/suggest
  *
- * Returns `null` if the fetch fails, times out, or yields nothing
- * useful. The caller degrades gracefully in that case.
+ * Given a projectId (preferred) or brandName/websiteUrl (legacy pitch
+ * flow), generate ~10 conversational prompts a real potential customer
+ * might type into an AI search engine when researching this brand's
+ * category.
+ *
+ * Flow:
+ *   1. Resolve the project (or a pitch-mode partial).
+ *   2. Use the stored BrandProfile (migration 009). If missing and a
+ *      websiteUrl is available, run extractBrandProfile and persist the
+ *      result so subsequent calls skip the web fetch.
+ *   3. Call Claude with a structured profile — industry, audience,
+ *      products — rather than raw HTML. This removes the failure mode
+ *      where a JS-heavy site returns empty content and Claude falls
+ *      back to hallucinating from the brand name alone.
+ *   4. Return ~10 prompts split across awareness / consideration /
+ *      decision.
+ *
+ * System prompt uses a hard industry lock: if the inferred segment is
+ * "digital agency", every prompt must be what a digital-agency customer
+ * would ask, not a music-festival or bank customer.
  */
-async function fetchSiteContext(
-  url: string
-): Promise<string | null> {
-  try {
-    // Normalise - allow users to type "acme.ie" without scheme.
-    const normalised = /^https?:\/\//i.test(url) ? url : `https://${url}`;
 
-    const res = await fetch(normalised, {
-      signal: AbortSignal.timeout(5000),
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; CMO.ie-PromptBot/1.0; +https://cmo.ie)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-    });
-
-    if (!res.ok) return null;
-
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("html")) return null;
-
-    // Cap at ~200KB - landing pages that need more than that are an
-    // outlier and we don't want to pull down a 10MB SPA shell.
-    const reader = res.body?.getReader();
-    if (!reader) return null;
-
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    const MAX = 200_000;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        chunks.push(value);
-        total += value.length;
-        if (total >= MAX) {
-          await reader.cancel();
-          break;
-        }
-      }
-    }
-    const html = new TextDecoder("utf-8", { fatal: false }).decode(
-      Buffer.concat(chunks.map((c) => Buffer.from(c)))
-    );
-
-    // Targeted signals first - these are where brands actually say
-    // what they do.
-    const pick = (re: RegExp) => {
-      const m = html.match(re);
-      return m?.[1]?.trim() ?? "";
-    };
-
-    const title = pick(/<title[^>]*>([^<]{1,300})<\/title>/i);
-    const metaDesc = pick(
-      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']{1,500})["']/i
-    );
-    const ogDesc = pick(
-      /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']{1,500})["']/i
-    );
-    const ogSite = pick(
-      /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']{1,200})["']/i
-    );
-    const h1 = pick(/<h1[^>]*>([\s\S]{1,300}?)<\/h1>/i).replace(
-      /<[^>]+>/g,
-      " "
-    );
-
-    // Fallback: strip out head/scripts/styles and take first readable
-    // chunk of body text. Keeps things lean - we just need enough for
-    // industry inference, not a full dump.
-    let bodySample = "";
-    const bodyMatch = html.match(/<body[\s\S]*?<\/body>/i);
-    if (bodyMatch) {
-      bodySample = bodyMatch[0]
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 1200);
-    }
-
-    const parts = [
-      title && `Title: ${title}`,
-      ogSite && `Site name: ${ogSite}`,
-      metaDesc && `Meta description: ${metaDesc}`,
-      ogDesc && ogDesc !== metaDesc && `OG description: ${ogDesc}`,
-      h1 && `H1: ${h1}`,
-      bodySample && `Body excerpt: ${bodySample}`,
-    ].filter(Boolean);
-
-    if (parts.length === 0) return null;
-
-    // Final guard - trim to ~3k chars, well inside what Sonnet can
-    // digest without bloating the call.
-    return parts.join("\n").slice(0, 3000);
-  } catch {
-    return null;
-  }
+interface SuggestionBody {
+  projectId?: string;
+  brandName?: string;
+  websiteUrl?: string;
 }
+
+interface ProjectProfileRow {
+  id: string;
+  brand_name: string;
+  website_url: string | null;
+  brand_tracked_name: string | null;
+  brand_aliases: string[] | null;
+  profile_short_description: string | null;
+  profile_market_segment: string | null;
+  profile_brand_identity: string | null;
+  profile_target_audience: string | null;
+  profile_products_services:
+    | { name: string; description: string }[]
+    | null;
+  profile_updated_at: string | null;
+}
+
+function profileIsPopulated(p: ProjectProfileRow): boolean {
+  return Boolean(
+    p.profile_short_description &&
+      p.profile_short_description.trim().length > 0 &&
+      p.profile_market_segment &&
+      p.profile_market_segment.trim().length > 0
+  );
+}
+
+function profileToBrandProfile(p: ProjectProfileRow): BrandProfile {
+  return {
+    short_description: p.profile_short_description ?? "",
+    market_segment: p.profile_market_segment ?? "",
+    brand_identity: p.profile_brand_identity ?? "",
+    target_audience: p.profile_target_audience ?? "",
+    products_services: p.profile_products_services ?? [],
+  };
+}
+
+/**
+ * Builds the user-message prose we send to Claude. Uses a structured
+ * profile — explicitly not the raw HTML — so the industry context is
+ * compact, authoritative, and editable by the user.
+ */
+function renderProfileForPrompt(
+  brandName: string,
+  websiteUrl: string | null,
+  profile: BrandProfile | null
+): string {
+  const parts: string[] = [`Brand: ${brandName}`];
+  if (websiteUrl) parts.push(`Website: ${websiteUrl}`);
+
+  if (!profile || !profile.short_description) {
+    parts.push(
+      "\n(No structured profile available — do NOT guess the industry. Instead, emit a conservative set of ≤ 5 prompts scoped to what can be inferred from the brand name alone, and flag the first prompt's text with a short note in square brackets if industry is uncertain.)"
+    );
+    return parts.join("\n");
+  }
+
+  parts.push("", "Brand profile (USE THIS AS GROUND TRUTH — do not contradict):");
+  if (profile.short_description)
+    parts.push(`• What they do: ${profile.short_description}`);
+  if (profile.market_segment)
+    parts.push(`• Market segment: ${profile.market_segment}`);
+  if (profile.brand_identity)
+    parts.push(`• Brand identity: ${profile.brand_identity}`);
+  if (profile.target_audience)
+    parts.push(`• Target audience: ${profile.target_audience}`);
+  if (profile.products_services && profile.products_services.length > 0) {
+    parts.push("• Products / services:");
+    for (const ps of profile.products_services) {
+      parts.push(`    - ${ps.name}: ${ps.description}`);
+    }
+  }
+
+  return parts.join("\n");
+}
+
+const SYSTEM_PROMPT = `You are a GEO (Generative Engine Optimisation) expert helping Irish brands understand how AI search engines represent them.
+
+Your job: given a brand profile, generate 10 conversational prompts that a real potential customer of THIS SPECIFIC BRAND would type into ChatGPT, Perplexity, or Gemini when researching their category.
+
+Hard rules — breaking any one of these is a failure:
+1. INDUSTRY LOCK. Every prompt must be a question from the tracked brand's stated market segment. If the segment is "digital transformation agency", every prompt is about digital/AI/marketing agencies — NEVER about banks, concert tickets, music festivals, tourism, hospitality, restaurants, or any adjacent-but-unrelated Irish business. If you can't generate 10 on-industry prompts, generate fewer.
+2. CUSTOMER VIEWPOINT. Every prompt is phrased as the customer-who-doesn't-know-this-brand-exists would ask it. NEVER include the brand's name or any of its aliases in the prompt — doing so invalidates the entire tracking exercise.
+3. FUNNEL MIX. Roughly 3 awareness (broad category / problem-level), ~4 consideration (comparing options, features, trust signals), ~3 decision (pricing, shortlists, specific named-competitor comparisons).
+4. NATURAL LANGUAGE. Full questions, not keyword strings. Average 12–25 words per prompt.
+5. GEO RELEVANCE. Favour Irish phrasing ("in Ireland", "Dublin", ".ie") where natural for the segment. Don't force it where it isn't — some prompts should be globally phrased.
+6. COMPARATIVE PROMPTS. Where relevant, name real competitor categories or leaders the customer would realistically compare against — this is how real users search ("vs Accenture", "compared to Deloitte").
+
+Output contract: return ONLY valid JSON. No markdown fences, no preamble, no explanation. Shape:
+[{"text": string, "category": "awareness"|"consideration"|"decision"}]
+
+If the profile is empty or uncertain, return FEWER prompts (≤ 5) rather than inventing industry context.`;
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = (await request.json()) as SuggestionBody;
     const { projectId } = body;
     let { brandName, websiteUrl } = body;
 
-    // If projectId is provided but brand/website aren't, fetch from project
-    if (projectId && (!brandName || !websiteUrl)) {
-      const supabase = await createClient();
-      const { data: project } = await supabase
-        .from("projects")
-        .select("brand_name, website_url")
-        .eq("id", projectId)
-        .single();
-
-      if (!project) {
-        return NextResponse.json(
-          { error: "Project not found" },
-          { status: 404 }
-        );
-      }
-
-      brandName = project.brand_name;
-      websiteUrl = project.website_url;
-    }
-
-    if (!brandName) {
-      return NextResponse.json(
-        { error: "brandName is required or projectId must be provided" },
-        { status: 400 }
-      );
-    }
-
-    // If Anthropic key isn't set, return helpful fallback
     if (
       !process.env.ANTHROPIC_API_KEY ||
       process.env.ANTHROPIC_API_KEY.startsWith("sk-ant-...")
@@ -165,13 +145,83 @@ export async function POST(request: Request) {
       );
     }
 
-    // Pull real site context so Claude can infer industry. This is the
-    // piece that was missing - without it the model has to guess what
-    // the brand does from its name, which produces off-industry prompts
-    // for anything that isn't a household name.
-    const siteContext = websiteUrl
-      ? await fetchSiteContext(websiteUrl)
-      : null;
+    let profile: BrandProfile | null = null;
+
+    // ── Path A: projectId supplied — use stored profile, extract if missing ──
+    if (projectId) {
+      const supabase = await createClient();
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select(
+          "id, brand_name, website_url, brand_tracked_name, brand_aliases, profile_short_description, profile_market_segment, profile_brand_identity, profile_target_audience, profile_products_services, profile_updated_at"
+        )
+        .eq("id", projectId)
+        .maybeSingle<ProjectProfileRow>();
+
+      if (projectError || !project) {
+        return NextResponse.json(
+          { error: "Project not found" },
+          { status: 404 }
+        );
+      }
+
+      brandName = project.brand_tracked_name || project.brand_name;
+      websiteUrl = project.website_url ?? undefined;
+
+      if (profileIsPopulated(project)) {
+        profile = profileToBrandProfile(project);
+      } else if (project.website_url) {
+        // First call for this project — extract and persist so the
+        // next call is instant and consistent.
+        const extracted = await extractBrandProfile(
+          brandName,
+          project.website_url
+        );
+        if (extracted && extracted.short_description) {
+          profile = extracted;
+          // Persist via admin so RLS doesn't block the background save.
+          const admin = createAdminClient();
+          const { error: updateError } = await admin
+            .from("projects")
+            .update({
+              profile_short_description: extracted.short_description,
+              profile_market_segment: extracted.market_segment,
+              profile_brand_identity: extracted.brand_identity,
+              profile_target_audience: extracted.target_audience,
+              profile_products_services: extracted.products_services,
+              profile_updated_at: new Date().toISOString(),
+            })
+            .eq("id", projectId);
+          if (updateError) {
+            console.error(
+              "Failed to persist extracted brand profile:",
+              updateError
+            );
+          }
+        }
+      }
+    } else {
+      // ── Path B: legacy pitch-mode call with raw fields ──
+      if (!brandName) {
+        return NextResponse.json(
+          {
+            error:
+              "brandName is required or projectId must be provided",
+          },
+          { status: 400 }
+        );
+      }
+      if (websiteUrl) {
+        profile = await extractBrandProfile(brandName, websiteUrl);
+      }
+    }
+
+    if (!brandName) {
+      return NextResponse.json(
+        { error: "brandName is required or projectId must be provided" },
+        { status: 400 }
+      );
+    }
 
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -179,39 +229,17 @@ export async function POST(request: Request) {
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 1200,
-      system: `You are a GEO (Generative Engine Optimisation) expert helping Irish brands understand how AI search engines represent them.
-
-Your job: given a brand and its website content, generate 10 conversational prompts that a real potential customer would type into ChatGPT, Perplexity, or Gemini when researching this exact type of company.
-
-Method:
-1. First, infer the brand's industry, sub-category, and customer from the website content provided. Be specific - not "a legal firm" but "a Dublin-based employment law firm serving SMEs".
-2. Every prompt must be plausibly something that brand's actual customer would ask. No generic SaaS prompts unless the brand is SaaS. No B2C prompts if the brand is clearly B2B. Stay inside the inferred industry.
-3. Prompts should be conversational, full questions - not keyword strings.
-4. Mix the funnel: ~3 awareness (broad category/problem), ~4 consideration (comparing options, features, trust signals), ~3 decision (pricing, shortlists, specific providers).
-5. Favour Ireland-specific phrasing where it would be natural ("in Dublin", "Irish", "Ireland", ".ie"), but don't force it into every prompt.
-6. Some prompts should name competitors or category leaders the user might realistically compare against - this is how real users search.
-
-Return ONLY valid JSON. No markdown fences, no preamble, no explanation:
-[{"text": string, "category": "awareness"|"consideration"|"decision"}]`,
+      max_tokens: 1500,
+      system: SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
-          content: [
-            `Brand: ${brandName}`,
-            websiteUrl ? `Website: ${websiteUrl}` : null,
-            siteContext
-              ? `\nWebsite content (use this to determine industry and customer - do not ignore it):\n${siteContext}`
-              : `\n(No website content available - infer industry from the brand name alone, and flag uncertainty by staying broad.)`,
-          ]
-            .filter(Boolean)
-            .join("\n"),
+          content: renderProfileForPrompt(brandName, websiteUrl ?? null, profile),
         },
       ],
     });
 
-    // Extract text from response
-    const textBlock = response.content.find((block) => block.type === "text");
+    const textBlock = response.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {
       return NextResponse.json(
         { error: "No text response from Claude" },
@@ -219,9 +247,6 @@ Return ONLY valid JSON. No markdown fences, no preamble, no explanation:
       );
     }
 
-    // Defensive JSON parsing - the system prompt says "no fences", but
-    // if the model ever slips one in we don't want the whole call to
-    // fail.
     let raw = textBlock.text.trim();
     if (raw.startsWith("```")) {
       raw = raw
@@ -230,9 +255,27 @@ Return ONLY valid JSON. No markdown fences, no preamble, no explanation:
         .trim();
     }
 
-    const suggestions = JSON.parse(raw);
+    let suggestions: unknown;
+    try {
+      suggestions = JSON.parse(raw);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Could not parse suggestions from model response",
+          raw: raw.slice(0, 500),
+        },
+        { status: 502 }
+      );
+    }
 
-    return NextResponse.json({ suggestions });
+    // Surface the profile alongside suggestions so the UI can show
+    // "We think you are: X" — and give the user an obvious path to
+    // correct it when it's wrong.
+    return NextResponse.json({
+      suggestions,
+      profile,
+      profile_populated: profile !== null,
+    });
   } catch (error) {
     console.error("Prompt suggestion error:", error);
     return NextResponse.json(

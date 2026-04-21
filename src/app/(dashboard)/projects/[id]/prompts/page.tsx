@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { CATEGORY_LABELS } from "@/lib/types";
 import type { Prompt, PromptCategory } from "@/lib/types";
 import { LoadingPhrases } from "@/components/ui/loading-phrases";
+import { BrandProfileCard } from "@/components/dashboard/brand-profile-card";
 import {
   Plus,
   Trash2,
@@ -189,19 +190,20 @@ export default function PromptsPage() {
         </div>
       </header>
 
-      {/* ── Inline hint (no banner) ── replaces the blue "Quick start" box */}
-      {prompts.length === 0 && !loading && (
-        <p className="mt-6 text-sm text-text-secondary max-w-2xl">
-          Type your own below or tap{" "}
-          <span className="text-text-primary font-medium">
-            Generate suggestions
-          </span>{" "}
-          to get AI-recommended prompts. Aim for at least 5 for meaningful
-          tracking.
-        </p>
-      )}
+      {/* ── Brand profile — authoritative context for every suggestion ── */}
+      {/* Renders first so the user can see (and correct) what Claude thinks the brand is BEFORE trusting anything else on this page. */}
+      <div className="mt-8 mb-10">
+        <BrandProfileCard
+          projectId={projectId}
+          onSaved={() => {
+            // User just corrected the profile — re-run suggestions so they reflect the fix.
+            fetchSuggestions();
+          }}
+        />
+      </div>
+
       {prompts.length > 0 && prompts.length < 5 && (
-        <p className="mt-6 text-sm text-warning max-w-2xl">
+        <p className="mb-6 text-sm text-warning max-w-2xl">
           You have {prompts.length} prompt
           {prompts.length === 1 ? "" : "s"} - add at least{" "}
           {5 - prompts.length} more for meaningful results across the customer
@@ -209,59 +211,34 @@ export default function PromptsPage() {
         </p>
       )}
 
-      {/* ── Add a prompt ── flat form, no card wrapper */}
-      <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 md:py-12 border-b border-border">
-        <p className="col-span-12 md:col-span-3 text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold md:pt-2 flex items-center gap-2">
-          <span aria-hidden="true" className="inline-block w-4 h-[2px] bg-emerald-dark" />
-          Add a prompt
-        </p>
-        <div className="col-span-12 md:col-span-9 max-w-3xl">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <Input
-                value={newPromptText}
-                onChange={(e) => setNewPromptText(e.target.value)}
-                placeholder="e.g. What are the best law firms in Ireland for startups?"
-                onKeyDown={(e) => e.key === "Enter" && addPrompt()}
-              />
-            </div>
-            <select
-              value={newPromptCategory}
-              onChange={(e) =>
-                setNewPromptCategory(e.target.value as PromptCategory)
-              }
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-emerald transition-[border-color,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
-            >
-              {categoryOptions.map((cat) => (
-                <option key={cat} value={cat}>
-                  {CATEGORY_LABELS[cat]}
-                </option>
-              ))}
-            </select>
-            <Button onClick={addPrompt} disabled={!newPromptText.trim()}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── AI suggestions ── flattened */}
+      {/* ── AI suggestions — primary path to adding prompts ── */}
+      {/* Positioned first because most users don't know what to add manually. */}
       <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 md:py-12 border-b border-border">
         <div className="col-span-12 md:col-span-3 space-y-2">
           <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
             <span aria-hidden="true" className="inline-block w-4 h-[2px] bg-emerald-dark" />
-            AI suggestions
+            Suggested prompts
           </p>
           <p className="text-sm text-text-secondary leading-relaxed">
-            Claude analyses your brand and suggests prompts your customers are
-            likely to ask.
+            Customer-phrased questions Claude thinks your audience is likely to
+            ask, scoped strictly to your market segment. Start here — most
+            prompts on your tracker will come from this list.
+          </p>
+          <p className="text-xs text-text-muted leading-relaxed">
+            If the segment looks wrong, fix the brand profile above and
+            regenerate.
           </p>
         </div>
         <div className="col-span-12 md:col-span-9 max-w-3xl">
+          {suggestions.length === 0 && !loadingSuggestions && (
+            <p className="mb-4 text-sm text-text-secondary">
+              No suggestions yet. Click below — we&apos;ll generate about 10,
+              you pick the ones worth tracking.
+            </p>
+          )}
           <Button
             onClick={fetchSuggestions}
-            variant="outline"
+            variant={suggestions.length > 0 ? "outline" : "default"}
             disabled={loadingSuggestions}
           >
             {loadingSuggestions ? (
@@ -269,7 +246,7 @@ export default function PromptsPage() {
             ) : (
               <Sparkles className="h-4 w-4 mr-2" />
             )}
-            {suggestions.length > 0 ? "Regenerate" : "Generate suggestions"}
+            {suggestions.length > 0 ? "Regenerate suggestions" : "Generate suggestions"}
           </Button>
 
           {loadingSuggestions && (
@@ -321,6 +298,51 @@ export default function PromptsPage() {
               })}
             </ul>
           )}
+        </div>
+      </section>
+
+      {/* ── Manual entry — secondary path ── */}
+      {/* De-emphasised compared to suggestions: most users don't know what to add, so suggestions are the default workflow. */}
+      <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 md:py-12 border-b border-border">
+        <div className="col-span-12 md:col-span-3 space-y-1">
+          <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
+            <span aria-hidden="true" className="inline-block w-4 h-[2px] bg-emerald-dark" />
+            Add your own
+          </p>
+          <p className="text-xs text-text-muted leading-relaxed">
+            Suggestions miss your specific question? Write your own below.
+            Rule of thumb: phrase it the way a customer who doesn&apos;t know
+            you yet would Google-or-AI it.
+          </p>
+        </div>
+        <div className="col-span-12 md:col-span-9 max-w-3xl">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <Input
+                value={newPromptText}
+                onChange={(e) => setNewPromptText(e.target.value)}
+                placeholder="e.g. What are the best law firms in Ireland for startups?"
+                onKeyDown={(e) => e.key === "Enter" && addPrompt()}
+              />
+            </div>
+            <select
+              value={newPromptCategory}
+              onChange={(e) =>
+                setNewPromptCategory(e.target.value as PromptCategory)
+              }
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-emerald transition-[border-color,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
+            >
+              {categoryOptions.map((cat) => (
+                <option key={cat} value={cat}>
+                  {CATEGORY_LABELS[cat]}
+                </option>
+              ))}
+            </select>
+            <Button onClick={addPrompt} disabled={!newPromptText.trim()} variant="outline">
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          </div>
         </div>
       </section>
 
