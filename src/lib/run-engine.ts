@@ -94,17 +94,26 @@ Rules:
 - null       = the brand is not meaningfully discussed (e.g. only appears as a URL).`;
 
 // Helper: normalise a hostname for comparison (no www, lowercase).
-function normDomain(u: string | null | undefined): string | null {
+// Exported for tests — no external callers should rely on this.
+export function normDomain(u: string | null | undefined): string | null {
   if (!u) return null;
+  // Case-insensitive scheme check: "HTTPS://…" and "http://…" both count
+  // as "already has a scheme". Otherwise we'd prefix `https://` onto an
+  // already-prefixed upper-case URL and end up with `https://HTTPS://…`,
+  // which then parses with hostname "https".
+  const hasScheme = /^https?:\/\//i.test(u);
   try {
-    const host = new URL(u.startsWith("http") ? u : `https://${u}`).hostname;
+    const host = new URL(hasScheme ? u : `https://${u}`).hostname;
     return host.replace(/^www\./, "").toLowerCase();
   } catch {
-    return u.replace(/^https?:\/\//, "").replace(/^www\./, "").toLowerCase();
+    return u
+      .replace(/^https?:\/\//i, "")
+      .replace(/^www\./, "")
+      .toLowerCase();
   }
 }
 
-function tagSources(
+export function tagSources(
   sources: ModelSource[],
   brandDomains: Set<string>,
   competitorDomains: { domain: string }[]
@@ -125,8 +134,11 @@ function tagSources(
 /**
  * Build the list of MatchableBrand objects for a project — the tracked
  * brand plus every competitor. Used by the run engine's analysis step.
+ *
+ * Exported for tests; also useful anywhere that wants to re-run brand
+ * matching against an arbitrary text (e.g. historical backfills).
  */
-function buildMatchables(
+export function buildMatchables(
   project: Pick<
     Project,
     | "id"
@@ -139,19 +151,21 @@ function buildMatchables(
   },
   competitors: Competitor[]
 ): MatchableBrand[] {
+  // `||` (not `??`) so that empty strings from partially-migrated rows
+  // also fall through to the legacy `name` / `brand_name` columns.
   return [
     {
       id: "project",
-      display_name: project.brand_display_name ?? project.brand_name ?? "",
-      tracked_name: project.brand_tracked_name ?? project.brand_name ?? "",
+      display_name: project.brand_display_name || project.brand_name || "",
+      tracked_name: project.brand_tracked_name || project.brand_name || "",
       aliases: project.brand_aliases ?? [],
       regex_pattern: project.brand_regex_pattern ?? null,
       is_tracked_brand: true,
     },
     ...competitors.map((c) => ({
       id: c.id,
-      display_name: c.display_name ?? c.name,
-      tracked_name: c.tracked_name ?? c.name,
+      display_name: c.display_name || c.name,
+      tracked_name: c.tracked_name || c.name,
       aliases: c.aliases ?? [],
       regex_pattern: c.regex_pattern ?? null,
       is_tracked_brand: false,

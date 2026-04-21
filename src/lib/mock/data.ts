@@ -38,6 +38,16 @@ export const mockProject: Project = {
   brand_aliases: ["Acme Legal Ireland", "Acme"],
   brand_regex_pattern: null,
   brand_domains: ["acmelegal.ie"],
+  profile_short_description:
+    "Dublin-based legal firm focused on commercial and employment law for Irish SMEs.",
+  profile_market_segment: "Irish commercial + employment law for SMEs",
+  profile_brand_identity: "Trusted challenger",
+  profile_target_audience: "Owner-operators and HR leads at Irish SMEs (10–200 staff).",
+  profile_products_services: [
+    { name: "Employment advisory", description: "Ongoing HR and disputes counsel." },
+    { name: "Commercial contracts", description: "Bespoke contracts and reviews." },
+  ],
+  profile_updated_at: new Date(Date.now() - 7 * 86400000).toISOString(),
   country_codes: ["IE", "GB"],
   models: ["chatgpt", "perplexity", "google_aio", "gemini"],
   is_pitch: false,
@@ -95,6 +105,9 @@ export const mockPrompts: Prompt[] = [
     text: "What are the best law firms in Ireland for corporate M&A?",
     category: "awareness",
     is_active: true,
+    status: "active",
+    country_code: "IE",
+    topic_id: null,
     created_at: new Date().toISOString(),
   },
   {
@@ -103,6 +116,9 @@ export const mockPrompts: Prompt[] = [
     text: "Which Irish law firm should I use for a Series A fundraise?",
     category: "consideration",
     is_active: true,
+    status: "active",
+    country_code: "IE",
+    topic_id: null,
     created_at: new Date().toISOString(),
   },
   {
@@ -111,6 +127,9 @@ export const mockPrompts: Prompt[] = [
     text: "Best employment law solicitors Dublin",
     category: "decision",
     is_active: true,
+    status: "active",
+    country_code: "IE",
+    topic_id: null,
     created_at: new Date().toISOString(),
   },
 ];

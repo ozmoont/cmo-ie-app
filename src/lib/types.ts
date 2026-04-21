@@ -42,6 +42,14 @@ export interface Project {
   brand_regex_pattern: string | null;
   /** Domains owned by the tracked brand; classifies sources as "you" in analytics. */
   brand_domains: string[];
+  // ── Brand profile (migration 009) — nullable until extraction runs ──
+  profile_short_description: string | null;
+  profile_market_segment: string | null;
+  profile_brand_identity: string | null;
+  profile_target_audience: string | null;
+  /** JSONB column shaped as `BrandProductService[]` — see lib/brand-profile.ts. */
+  profile_products_services: { name: string; description: string }[];
+  profile_updated_at: string | null;
   created_at: string;
 }
 
@@ -86,7 +94,47 @@ export interface Prompt {
   project_id: string;
   text: string;
   category: PromptCategory;
+  /** Legacy boolean, kept for back-compat. New code should use `status`. */
   is_active: boolean;
+  /** Current state — drives whether the prompt runs daily. See migration 007. */
+  status: PromptStatus;
+  /** ISO-3166 alpha-2. The prompt's target market for geo-aware queries. */
+  country_code: string;
+  /** Optional folder-style grouping. One topic per prompt. NULL = "No Topic". */
+  topic_id: string | null;
+  created_at: string;
+}
+
+export type PromptStatus = "active" | "inactive" | "deleted";
+
+/**
+ * Folder-style prompt grouping. One topic per prompt. Drives sidebar
+ * hierarchy, prompt suggestions, and topic-level aggregated metrics.
+ */
+export interface Topic {
+  id: string;
+  project_id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
+/**
+ * Free-form labels applied to prompts. Many tags per prompt; AND/OR
+ * filtering on the dashboard.
+ */
+export interface Tag {
+  id: string;
+  project_id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
+/** Many-to-many join between prompts and tags. */
+export interface PromptTag {
+  prompt_id: string;
+  tag_id: string;
   created_at: string;
 }
 
