@@ -13,6 +13,7 @@ import {
   type ModelSource,
   type QueryOptions,
 } from "./types";
+import { retryWithBackoff } from "./retry";
 
 const ENDPOINT = "https://api.openai.com/v1/responses";
 const MODEL_ID = "gpt-4.1";
@@ -79,25 +80,34 @@ export const openaiAdapter: ModelAdapter = {
 
     let payload: ResponsesPayload;
     try {
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+      payload = await retryWithBackoff(
+        async () => {
+          const res = await fetch(ENDPOINT, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+            signal: opts.signal,
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new AdapterError(
+              "chatgpt",
+              `HTTP ${res.status}: ${errText.slice(0, 400)}`
+            );
+          }
+          return (await res.json()) as ResponsesPayload;
         },
-        body: JSON.stringify(body),
-        signal: opts.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new AdapterError(
-          "chatgpt",
-          `HTTP ${res.status}: ${errText.slice(0, 400)}`
-        );
-      }
-
-      payload = (await res.json()) as ResponsesPayload;
+        {
+          signal: opts.signal,
+          onRetry: (attempt, err) =>
+            console.warn(
+              `[chatgpt] retry ${attempt}: ${err instanceof Error ? err.message.slice(0, 160) : err}`
+            ),
+        }
+      );
     } catch (err) {
       if (err instanceof AdapterError) throw err;
       throw new AdapterError(

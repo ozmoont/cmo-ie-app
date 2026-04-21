@@ -14,6 +14,7 @@ import {
   type ModelSource,
   type QueryOptions,
 } from "./types";
+import { retryWithBackoff } from "./retry";
 
 const MODEL_ID = "gemini-2.5-flash";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent`;
@@ -77,24 +78,33 @@ export const geminiAdapter: ModelAdapter = {
 
     let payload: GeminiPayload;
     try {
-      const res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      payload = await retryWithBackoff(
+        async () => {
+          const res = await fetch(`${ENDPOINT}?key=${apiKey}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+            signal: opts.signal,
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new AdapterError(
+              "gemini",
+              `HTTP ${res.status}: ${errText.slice(0, 400)}`
+            );
+          }
+          return (await res.json()) as GeminiPayload;
         },
-        body: JSON.stringify(body),
-        signal: opts.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new AdapterError(
-          "gemini",
-          `HTTP ${res.status}: ${errText.slice(0, 400)}`
-        );
-      }
-
-      payload = (await res.json()) as GeminiPayload;
+        {
+          signal: opts.signal,
+          onRetry: (attempt, err) =>
+            console.warn(
+              `[gemini] retry ${attempt}: ${err instanceof Error ? err.message.slice(0, 160) : err}`
+            ),
+        }
+      );
     } catch (err) {
       if (err instanceof AdapterError) throw err;
       throw new AdapterError(
