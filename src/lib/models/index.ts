@@ -10,7 +10,7 @@ import { anthropicAdapter } from "./anthropic";
 import { geminiAdapter } from "./gemini";
 import { openaiAdapter } from "./openai";
 import { perplexityAdapter } from "./perplexity";
-import type { ModelAdapter } from "./types";
+import type { ApiKeyOverrides, ModelAdapter } from "./types";
 
 const REGISTRY: Partial<Record<AIModel, ModelAdapter>> = {
   claude: anthropicAdapter,
@@ -34,12 +34,24 @@ export function listAvailableAdapters(): ModelAdapter[] {
  * Returns the adapters for the subset of models passed in that are both
  * registered AND have credentials configured. Used by the run engine to
  * skip unavailable models without failing the run.
+ *
+ * An adapter counts as "available" when EITHER:
+ *   - the env-var default is set (typical on paid plans using managed keys), OR
+ *   - the caller has supplied an org-level BYOK override for that model.
+ *
+ * Callers pass `apiKeys` when running for an org that has provisioned
+ * its own credentials via settings/api-keys; the override propagates to
+ * `adapter.query({ apiKey })` at call time.
  */
-export function resolveAdapters(models: AIModel[]): {
+export function resolveAdapters(
+  models: AIModel[],
+  opts?: { apiKeys?: ApiKeyOverrides }
+): {
   available: ModelAdapter[];
   missing: AIModel[];
   unimplemented: AIModel[];
 } {
+  const overrides = opts?.apiKeys ?? {};
   const available: ModelAdapter[] = [];
   const missing: AIModel[] = [];
   const unimplemented: AIModel[] = [];
@@ -50,7 +62,8 @@ export function resolveAdapters(models: AIModel[]): {
       unimplemented.push(model);
       continue;
     }
-    if (adapter.available()) {
+    const hasOverride = Boolean(overrides[model]);
+    if (adapter.available() || hasOverride) {
       available.push(adapter);
     } else {
       missing.push(model);
@@ -60,5 +73,11 @@ export function resolveAdapters(models: AIModel[]): {
   return { available, missing, unimplemented };
 }
 
-export type { ModelAdapter, ModelResponse, ModelSource, QueryOptions } from "./types";
+export type {
+  ApiKeyOverrides,
+  ModelAdapter,
+  ModelResponse,
+  ModelSource,
+  QueryOptions,
+} from "./types";
 export { AdapterError, domainFromUrl } from "./types";

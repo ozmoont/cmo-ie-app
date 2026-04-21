@@ -31,14 +31,53 @@ export interface Project {
   country_codes: string[];
   models: AIModel[];
   is_pitch: boolean;
+  // ── Brand matching (migration 006) ──
+  /** Human-readable brand label shown in dashboards. Does not drive matching. */
+  brand_display_name: string;
+  /** Canonical matching token for the tracked brand. Shortest unique form. */
+  brand_tracked_name: string;
+  /** Alternative spellings / abbreviations that count as mentions of the brand. */
+  brand_aliases: string[];
+  /** Optional case-sensitive regex override for complex matching. */
+  brand_regex_pattern: string | null;
+  /** Domains owned by the tracked brand; classifies sources as "you" in analytics. */
+  brand_domains: string[];
   created_at: string;
 }
 
 export interface Competitor {
   id: string;
   project_id: string;
+  /** Legacy single-name field. Kept populated as a copy of tracked_name for back-compat with older UIs; new code should prefer display_name / tracked_name. */
   name: string;
   website_url: string | null;
+  // ── Brand matching (migration 006) ──
+  display_name: string;
+  tracked_name: string;
+  aliases: string[];
+  regex_pattern: string | null;
+  color: string | null;
+  domains: string[];
+  created_at: string;
+}
+
+/**
+ * One brand appearance in a chat response. Populated by the run engine
+ * for every brand named, not just tracked competitors — the complete
+ * list is needed for accurate position ranking (Peec convention).
+ */
+export interface ResultBrandMention {
+  id: string;
+  result_id: string;
+  /** Display name of the brand as shown in the UI. */
+  brand_name: string;
+  /** Set when the mention matched a tracked competitor. */
+  competitor_id: string | null;
+  /** True when this mention is the project's own tracked brand. */
+  is_tracked_brand: boolean;
+  /** 1-indexed order the brand appeared in the response. */
+  position: number;
+  sentiment: Sentiment | null;
   created_at: string;
 }
 

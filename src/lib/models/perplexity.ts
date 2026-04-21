@@ -46,7 +46,8 @@ export const perplexityAdapter: ModelAdapter = {
   },
 
   async query(prompt: string, opts: QueryOptions = {}): Promise<ModelResponse> {
-    if (!this.available()) {
+    const apiKey = opts.apiKey ?? process.env.PERPLEXITY_API_KEY;
+    if (!apiKey) {
       throw new AdapterError("perplexity", "PERPLEXITY_API_KEY not configured");
     }
 
@@ -73,7 +74,7 @@ export const perplexityAdapter: ModelAdapter = {
       const res = await fetch(ENDPOINT, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
           Accept: "application/json",
         },

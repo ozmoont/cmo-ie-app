@@ -19,6 +19,46 @@ const MODEL_ID = "claude-sonnet-4-6";
 // default for production chats because Haiku makes visibility comparisons
 // noisier. Cost ≈ $0.003-0.015 per chat at our token counts.
 
+/**
+ * Country codes Anthropic's web_search_20250305 tool explicitly supports
+ * as a user_location hint. Anything outside this set is rejected with a
+ * 400 "Country code X is not supported" error at request time, so we
+ * filter upstream.
+ *
+ * Source: Anthropic docs on tool use — supported markets for the web
+ * search tool. Conservative list; expand as Anthropic adds more.
+ *
+ * Notable omissions: IE (Ireland), plus most of the EU outside DE/FR/IT/ES
+ * and most of APAC outside JP/IN/AU. For unsupported countries we drop
+ * the location hint entirely and rely on the `marketContext` in the
+ * prompt to nudge the answer toward the right market.
+ */
+const SUPPORTED_WEB_SEARCH_COUNTRIES = new Set([
+  "US",
+  "GB",
+  "CA",
+  "AU",
+  "DE",
+  "FR",
+  "IT",
+  "ES",
+  "JP",
+  "IN",
+  "BR",
+  "MX",
+  "NL",
+  "SE",
+  "NO",
+  "DK",
+  "FI",
+  "PL",
+  "CH",
+  "AT",
+  "BE",
+  // Known NOT supported (return 400 at request time): IE, NZ, ZA, various APAC.
+  // When Anthropic adds these, move them here.
+]);
+
 export const anthropicAdapter: ModelAdapter = {
   name: "claude",
   label: "Claude",
@@ -28,11 +68,31 @@ export const anthropicAdapter: ModelAdapter = {
   },
 
   async query(prompt: string, opts: QueryOptions = {}): Promise<ModelResponse> {
-    if (!this.available()) {
+    // Prefer the BYOK override, fall back to env var. Trial plans
+    // require an org-level key; paid plans use CMO.ie's managed key
+    // unless the org has specified its own.
+    const apiKey = opts.apiKey ?? process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
       throw new AdapterError("claude", "ANTHROPIC_API_KEY not configured");
     }
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey });
+
+    // Only pass user_location when the country is on Anthropic's
+    // supported list. Otherwise the request 400s with "Country code X
+    // is not supported". For unsupported markets (Ireland is a frequent
+    // one) the search still runs globally; we nudge the answer toward
+    // the right region via marketContext in the user prompt below.
+    const requestedCountry = opts.country?.toUpperCase();
+    const countryForLocation =
+      requestedCountry && SUPPORTED_WEB_SEARCH_COUNTRIES.has(requestedCountry)
+        ? requestedCountry
+        : null;
+
+    const marketHint = opts.marketContext ?? (requestedCountry === "IE" ? "Irish market" : undefined);
+    const userContent = marketHint
+      ? `Context: answer this for the ${marketHint}.\n\n${prompt}`
+      : prompt;
 
     try {
       const message = await client.messages.create(
@@ -43,18 +103,21 @@ export const anthropicAdapter: ModelAdapter = {
             {
               type: "web_search_20250305",
               name: "web_search",
-              // Bias results to the user's market; Claude honours
-              // user_location hints in web_search.
-              user_location: opts.country
-                ? { type: "approximate", country: opts.country }
-                : { type: "approximate", country: "IE" },
+              ...(countryForLocation
+                ? {
+                    user_location: {
+                      type: "approximate" as const,
+                      country: countryForLocation,
+                    },
+                  }
+                : {}),
               max_uses: 5,
             },
           ],
           messages: [
             {
               role: "user",
-              content: prompt,
+              content: userContent,
             },
           ],
         },

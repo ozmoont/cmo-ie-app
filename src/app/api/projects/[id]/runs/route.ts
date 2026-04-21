@@ -60,9 +60,7 @@ export async function POST(
 
         try {
           await executeRun(
-            projectId,
-            project.brand_name,
-            project.website_url,
+            project,
             activePrompts,
             project.models,
             competitors,

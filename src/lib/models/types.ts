@@ -61,7 +61,20 @@ export interface QueryOptions {
   marketContext?: string;
   /** Abort signal, honored best-effort. */
   signal?: AbortSignal;
+  /**
+   * Explicit API key override. Takes precedence over any env var. Used
+   * by the BYOK flow where an org supplies its own provider credentials
+   * (trial plan requirement, and a power-user option on paid plans).
+   */
+  apiKey?: string;
 }
+
+/**
+ * Per-model API key overrides, keyed by AIModel enum. Used by the router
+ * to decide which adapters are effectively "available" when an org has
+ * its own keys that differ from the env-var defaults.
+ */
+export type ApiKeyOverrides = Partial<Record<import("@/lib/types").AIModel, string>>;
 
 /**
  * Adapter interface. One per AIModel.

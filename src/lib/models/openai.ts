@@ -56,7 +56,8 @@ export const openaiAdapter: ModelAdapter = {
   },
 
   async query(prompt: string, opts: QueryOptions = {}): Promise<ModelResponse> {
-    if (!this.available()) {
+    const apiKey = opts.apiKey ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
       throw new AdapterError("chatgpt", "OPENAI_API_KEY not configured");
     }
 
@@ -81,7 +82,7 @@ export const openaiAdapter: ModelAdapter = {
       const res = await fetch(ENDPOINT, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),

@@ -138,6 +138,79 @@ export function summarisePosition(
 }
 
 /**
+ * Computes Share of Voice from raw mention counts.
+ *
+ * SoV answers the question "when AI talks about brands in this space,
+ * how often is it talking about you vs competitors?". It is distinct
+ * from Visibility (which answers "how often does AI mention you at all
+ * when asked about this topic"). See
+ * docs/peec-ai-competitive-review.md § Core metrics comparison.
+ *
+ * Formula:
+ *   SoV = (tracked_brand_mentions / total_brand_mentions) × 100
+ *
+ * Returns 0 when there are no mentions — callers should usually branch
+ * on `totalMentions === 0` before displaying the score so they can
+ * render a "no data yet" state instead of "0%".
+ */
+export function computeShareOfVoice(
+  trackedBrandMentions: number,
+  totalMentions: number
+): number {
+  if (totalMentions <= 0) return 0;
+  return Math.round((trackedBrandMentions / totalMentions) * 100);
+}
+
+/**
+ * Prose interpretation of an SoV score, mirroring the tiered copy used
+ * for visibility/position/sentiment so every dashboard summary has the
+ * same voice.
+ *
+ * Thresholds:
+ *   - No data: totalMentions === 0
+ *   - Dominant (≥ 40%): you're the primary voice in AI answers
+ *   - Competitive (20–40%): you show up, but share airtime
+ *   - Trailing (< 20%): competitors dominate the conversation
+ */
+export function summariseShareOfVoice(
+  trackedBrandMentions: number,
+  totalMentions: number,
+  brandName: string
+): { label: string; body: string; score: number } {
+  const score = computeShareOfVoice(trackedBrandMentions, totalMentions);
+
+  if (totalMentions === 0) {
+    return {
+      label: "No data yet",
+      body: `${brandName} hasn't been weighed against competitors yet. As AI answers accumulate, this will show how much of the conversation you own.`,
+      score: 0,
+    };
+  }
+
+  if (score >= 40) {
+    return {
+      label: "Dominant",
+      body: `${brandName} is the primary brand AI recommends in your category. Focus on holding this position — capture more prompt surface area rather than chasing incremental mentions.`,
+      score,
+    };
+  }
+
+  if (score >= 20) {
+    return {
+      label: "Competitive",
+      body: `${brandName} shows up but shares the conversation with competitors. Target the prompts where rivals consistently outpace you — that's the fastest path to a larger share.`,
+      score,
+    };
+  }
+
+  return {
+    label: "Trailing",
+    body: `Competitors dominate the AI conversation. Go to Gap Analysis to see which sources AI trusts that don't yet mention ${brandName}, and start there.`,
+    score,
+  };
+}
+
+/**
  * Sentiment score summary - parallels the two above.
  */
 export function summariseSentiment(
