@@ -153,7 +153,9 @@ export async function POST(
 
     const analystResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 2000,
+      // Sonnet 4.6 supports up to 64k output tokens; 8k is generous
+      // headroom for the analyst output while still capping cost.
+      max_tokens: 8000,
       system: GAP_ANALYST_SYSTEM,
       messages: [
         {
@@ -166,6 +168,12 @@ Visibility gaps:\n${JSON.stringify(gapData, null, 2)}`,
         },
       ],
     });
+
+    if (analystResponse.stop_reason === "max_tokens") {
+      throw new Error(
+        `Analyst output hit the max_tokens cap (${analystResponse.usage?.output_tokens ?? "?"} tokens) — the response is truncated and won't parse. Fewer gaps in one request, or a higher cap, are the two fixes.`
+      );
+    }
 
     const analystText = analystResponse.content.find(
       (b) => b.type === "text"
@@ -184,7 +192,12 @@ Visibility gaps:\n${JSON.stringify(gapData, null, 2)}`,
     if (actionTier !== "gaps") {
       const strategistResponse = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 3000,
+        // Strategist expands each gap into ranked actions, so output is
+        // ~2–3× the analyst's. Bumped from 3k (which blew up at 13k
+        // chars on our first real howl.ie test) to 12k — safely inside
+        // Sonnet 4.6's 64k ceiling and big enough for ~30 gaps before
+        // we'd need to paginate.
+        max_tokens: 12000,
         system: STRATEGIST_SYSTEM,
         messages: [
           {
@@ -194,10 +207,20 @@ Website: ${project.website_url ?? "not provided"}
 Industry context: Irish market
 Competitors: ${competitors.map((c) => c.name).join(", ") || "none tracked"}
 
-Gap analyses from our analyst team:\n${JSON.stringify(analyses, null, 2)}`,
+Gap analyses from our analyst team:\n${JSON.stringify(analyses, null, 2)}
+
+Keep the output tight. Trim descriptions to what's needed to act on —
+exhaustive prose inflates token counts without improving the plan. Target
+max 2 sentences per action description.`,
           },
         ],
       });
+
+      if (strategistResponse.stop_reason === "max_tokens") {
+        throw new Error(
+          `Strategist output hit the max_tokens cap (${strategistResponse.usage?.output_tokens ?? "?"} tokens) — truncated JSON won't parse. Reduce the number of gaps per request, or we'll need to paginate the strategist call.`
+        );
+      }
 
       const strategistText = strategistResponse.content.find(
         (b) => b.type === "text"
