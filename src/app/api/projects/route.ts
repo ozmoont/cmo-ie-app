@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PLAN_LIMITS } from "@/lib/types";
+import { validateWebsiteUrl } from "@/lib/url-validation";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -31,6 +32,23 @@ export async function POST(request: Request) {
       { error: "name and brand_name are required" },
       { status: 400 }
     );
+  }
+
+  // Validate the website URL upfront. A single comma in the hostname
+  // ("www,howl.ie" instead of "www.howl.ie") silently breaks every
+  // downstream extraction — the snapshot fetch fails, Claude has no
+  // context, the profile goes "Unknown", and every generated prompt
+  // becomes off-industry. Catch it at the form.
+  let normalisedUrl: string | null = null;
+  if (website_url && website_url.trim()) {
+    const validation = validateWebsiteUrl(website_url);
+    if (!validation.ok) {
+      return NextResponse.json(
+        { error: `Invalid website URL: ${validation.error}` },
+        { status: 400 }
+      );
+    }
+    normalisedUrl = validation.normalised;
   }
 
   // Check plan limits before inserting
@@ -65,7 +83,7 @@ export async function POST(request: Request) {
       org_id: profile.org_id,
       name,
       brand_name,
-      website_url: website_url || null,
+      website_url: normalisedUrl,
       country_codes: country_codes || ["IE"],
       models: models || ["chatgpt", "perplexity", "google_aio"],
     })
