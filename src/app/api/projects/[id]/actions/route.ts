@@ -173,7 +173,10 @@ Visibility gaps:\n${JSON.stringify(gapData, null, 2)}`,
     if (!analystText || analystText.type !== "text") {
       throw new Error("No analyst response");
     }
-    const analyses = JSON.parse(analystText.text);
+    const analyses = parseJsonFromClaude(
+      analystText.text,
+      "analyst"
+    );
 
     let actionPlan = analyses;
 
@@ -202,7 +205,7 @@ Gap analyses from our analyst team:\n${JSON.stringify(analyses, null, 2)}`,
       if (!strategistText || strategistText.type !== "text") {
         throw new Error("No strategist response");
       }
-      actionPlan = JSON.parse(strategistText.text);
+      actionPlan = parseJsonFromClaude(strategistText.text, "strategist");
     }
 
     return NextResponse.json({
@@ -212,9 +215,39 @@ Gap analyses from our analyst team:\n${JSON.stringify(analyses, null, 2)}`,
     });
   } catch (error) {
     console.error("Action generation error:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to generate actions";
     return NextResponse.json(
-      { error: "Failed to generate actions" },
+      // Surface the real error so users can see what went wrong in the UI
+      // (was: silently returned "Failed to generate actions" for every
+      // failure mode — unhelpful when a specific fix is available).
+      { error: message },
       { status: 500 }
+    );
+  }
+}
+
+/**
+ * Parse JSON that Claude returned, tolerant of markdown code fences.
+ * Sonnet reliably follows "no fences" instructions in the system prompt
+ * but occasionally slips one in, especially on very long outputs. When
+ * that happens, plain JSON.parse blows up — this helper strips the
+ * fences first and re-throws a caller-friendly error with a preview of
+ * the offending text so debugging is obvious in the UI.
+ */
+function parseJsonFromClaude(raw: string, label: string): unknown {
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(
+      `Couldn't parse ${label} response as JSON: ${
+        err instanceof Error ? err.message : "unknown parser error"
+      }. First 200 chars: ${cleaned.slice(0, 200)}`
     );
   }
 }
