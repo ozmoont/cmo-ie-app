@@ -77,6 +77,25 @@ export async function POST(request: Request) {
     );
   }
 
+  // Migration 006 split brand identity into display_name / tracked_name /
+  // aliases / domains. The legacy `brand_name` column stays as the user-
+  // facing canonical label; the matching-layer fields default from it so
+  // the project is usable immediately without extra onboarding steps.
+  // brand_aliases / brand_domains have schema defaults but we seed
+  // brand_domains from the website_url so the "your_own" classifier
+  // flag starts correct on day one.
+  const seedDomain = normalisedUrl
+    ? (() => {
+        try {
+          return new URL(normalisedUrl).hostname
+            .replace(/^www\./i, "")
+            .toLowerCase();
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
   const { data, error } = await supabase
     .from("projects")
     .insert({
@@ -84,8 +103,14 @@ export async function POST(request: Request) {
       name,
       brand_name,
       website_url: normalisedUrl,
+      brand_display_name: brand_name,
+      brand_tracked_name: brand_name,
+      brand_domains: seedDomain ? [seedDomain] : [],
       country_codes: country_codes || ["IE"],
-      models: models || ["chatgpt", "perplexity", "google_aio"],
+      // Default to the four adapter-implemented models. google_aio is
+      // unimplemented — leaving it off prevents a confusing "No model
+      // adapters available" run error on a fresh project.
+      models: models || ["claude", "chatgpt", "perplexity", "gemini"],
     })
     .select()
     .single();
