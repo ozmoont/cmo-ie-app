@@ -28,6 +28,7 @@ import {
   type MatchableBrand,
   type BrandMatch,
 } from "@/lib/brand-matching";
+import { classifyRunArtifacts } from "@/lib/classifiers/queue";
 import type { AIModel, Prompt, Competitor, Project } from "@/lib/types";
 import { MODEL_LABELS } from "@/lib/types";
 
@@ -692,6 +693,20 @@ export async function executeRun(
       message: `Run complete. Visibility ${visScore}% (${mentioned}/${successResults.length} mentions). ${citationInserts.length} sources recorded across ${available.length} models.`,
       current: totalSteps,
       total: totalSteps,
+    });
+
+    // Fire-and-forget: classify any new domains/URLs the run produced.
+    // We don't await this — the run is complete from the user's POV
+    // and classifications will land in the background, enriching the
+    // Sources and Gap Analysis views on the next page load.
+    classifyRunArtifacts(runId, {
+      yourOwnDomains: Array.from(brandDomains),
+      apiKey: apiKeys.claude,
+    }).catch((err) => {
+      console.error(
+        `Post-run classifier queue failed (run ${runId}):`,
+        err
+      );
     });
 
     return { runId, resultCount: allResults.length };

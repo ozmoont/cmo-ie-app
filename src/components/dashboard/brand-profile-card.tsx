@@ -30,6 +30,7 @@ import {
   Edit2,
   Plus,
   X,
+  RefreshCw,
 } from "lucide-react";
 
 interface ProductService {
@@ -64,7 +65,10 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [autoExtracted, setAutoExtracted] = useState(false);
+  const [extractionFailed, setExtractionFailed] = useState(false);
+  const [websiteUrl, setWebsiteUrl] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,10 +82,13 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
         if (cancelled) return;
         setProfile(data.profile ?? EMPTY_PROFILE);
         setAutoExtracted(Boolean(data.auto_extracted));
+        setExtractionFailed(Boolean(data.extraction_failed));
+        setWebsiteUrl(data.website_url ?? null);
         setUpdatedAt(data.profile_updated_at ?? null);
-        // When the profile was just auto-extracted, open the editor so
-        // the user is prompted to review before they generate anything.
-        if (data.auto_extracted) setEditing(true);
+        // When the profile was just auto-extracted OR extraction
+        // failed outright, open the editor so the user is prompted to
+        // review or fill in before generating anything.
+        if (data.auto_extracted || data.extraction_failed) setEditing(true);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Load failed");
@@ -114,6 +121,44 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * Force a fresh extraction from the brand's website, replacing
+   * whatever's currently stored. The escape hatch for when a cached
+   * profile is obviously wrong (e.g. Claude classified a digital agency
+   * as a law firm because a case study mentioned legal-tech work).
+   */
+  const regenerate = async () => {
+    if (
+      !window.confirm(
+        "Re-extract the brand profile from your website? This overwrites the current profile. You'll want to review the result before trusting downstream suggestions."
+      )
+    ) {
+      return;
+    }
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/profile/regenerate`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setProfile(data.profile ?? profile);
+      setUpdatedAt(data.profile_updated_at ?? null);
+      setAutoExtracted(true); // force review mode
+      setEditing(true);
+      onSaved?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Re-extraction failed");
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -172,19 +217,54 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
           </p>
         </div>
         {!editing && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setEditing(true)}
-            className="shrink-0"
-          >
-            <Edit2 className="h-3.5 w-3.5 mr-1.5" />
-            Edit
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={regenerate}
+              disabled={regenerating}
+              title="Re-extract from website (overwrites current profile)"
+            >
+              {regenerating ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Re-extract
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              <Edit2 className="h-3.5 w-3.5 mr-1.5" />
+              Edit
+            </Button>
+          </div>
         )}
       </div>
 
-      {/* Auto-extraction warning */}
+      {/* Extraction-failed warning (takes precedence over auto-extracted) */}
+      {extractionFailed && !autoExtracted && (
+        <div className="px-6 py-3 bg-danger/5 border-b border-danger/30 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-danger mt-0.5 shrink-0" />
+          <div className="text-xs text-text-primary leading-relaxed">
+            <p className="font-semibold text-danger">
+              We couldn&apos;t auto-extract the brand profile from{" "}
+              {websiteUrl ?? "your site"}.
+            </p>
+            <p className="text-text-secondary mt-1">
+              Your site likely blocks bot fetches (Cloudflare / Webflow
+              protection) or serves content via JavaScript with no
+              server-rendered HTML. Fill in the fields below manually —
+              it&apos;s faster than unblocking a bot, and the profile only
+              needs to be done once per project.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-extraction review prompt */}
       {autoExtracted && (
         <div className="px-6 py-3 bg-warning/5 border-b border-warning/30 flex items-start gap-3">
           <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />

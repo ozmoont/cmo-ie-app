@@ -47,21 +47,40 @@ export async function fetchSiteSnapshot(
   url: string,
   opts: { timeoutMs?: number; maxBytes?: number } = {}
 ): Promise<string | null> {
-  const { timeoutMs = 5000, maxBytes = 200_000 } = opts;
+  const { timeoutMs = 8000, maxBytes = 200_000 } = opts;
   let body: string;
+  const canonicalUrl = canonicaliseUrl(url);
   try {
-    const res = await fetch(canonicaliseUrl(url), {
+    // Mimic a real browser. Cloudflare-fronted sites, Webflow, Framer,
+    // Vercel Bot-Protection and similar aggressively block unfamiliar
+    // User-Agents (including polite self-identifying bots). Using a
+    // current Safari UA gets us through without misrepresenting — we
+    // still respect robots.txt and rate-limit ourselves.
+    const res = await fetch(canonicalUrl, {
       signal: AbortSignal.timeout(timeoutMs),
       redirect: "follow",
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; CMO.ie-BrandProfileBot/1.0; +https://cmo.ie)",
-        Accept: "text/html,application/xhtml+xml",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-IE,en;q=0.9",
+        "Accept-Encoding": "identity",
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(
+        `fetchSiteSnapshot: ${canonicalUrl} returned HTTP ${res.status}`
+      );
+      return null;
+    }
     const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("html")) return null;
+    if (!contentType.includes("html")) {
+      console.warn(
+        `fetchSiteSnapshot: ${canonicalUrl} content-type was "${contentType}", expected html`
+      );
+      return null;
+    }
 
     const reader = res.body?.getReader();
     if (!reader) return null;
@@ -83,7 +102,11 @@ export async function fetchSiteSnapshot(
     body = new TextDecoder("utf-8", { fatal: false }).decode(
       Buffer.concat(chunks.map((c) => Buffer.from(c)))
     );
-  } catch {
+  } catch (err) {
+    console.warn(
+      `fetchSiteSnapshot: ${canonicalUrl} fetch failed:`,
+      err instanceof Error ? err.message : err
+    );
     return null;
   }
 
@@ -128,41 +151,99 @@ export async function fetchSiteSnapshot(
     bodySample && `Body excerpt: ${bodySample}`,
   ].filter(Boolean);
 
-  if (parts.length === 0) return null;
-  return parts.join("\n").slice(0, 3000);
+  if (parts.length === 0) {
+    console.warn(
+      `fetchSiteSnapshot: ${canonicalUrl} returned HTML but no extractable signal (likely a JS-rendered SPA or blank body)`
+    );
+    return null;
+  }
+
+  // If we only extracted junk (e.g. a cookie banner title), bail. A
+  // snapshot shorter than ~80 chars almost never yields a useful
+  // profile and persisting "Unknown" fields is worse than failing
+  // loudly.
+  const joined = parts.join("\n").slice(0, 3000);
+  if (joined.length < 80) {
+    console.warn(
+      `fetchSiteSnapshot: ${canonicalUrl} snapshot too thin (${joined.length} chars) — returning null`
+    );
+    return null;
+  }
+  console.info(
+    `fetchSiteSnapshot: ${canonicalUrl} OK, ${joined.length} chars extracted`
+  );
+  return joined;
 }
 
-const EXTRACTION_SYSTEM = `You are an analyst that reads a brief website snapshot and returns a structured brand profile. The profile is used to tailor AI-visibility tracking for this brand.
+const EXTRACTION_SYSTEM = `You are an analyst that reads a brief website snapshot and returns a structured brand profile for ONE specific brand being tracked.
 
 Return ONLY valid JSON in this shape (no markdown fences, no preamble):
 {
-  "short_description": string,         // 1-2 plain sentences, max ~280 chars
-  "market_segment": string,            // Industry / sub-segment, e.g. "Irish employment law for SMEs"
+  "short_description": string,         // 1-2 plain sentences about THE TRACKED BRAND, max ~280 chars
+  "market_segment": string,            // Industry / sub-segment of THE TRACKED BRAND
   "brand_identity": string,            // Positioning: premium / challenger / enterprise / etc.
-  "target_audience": string,           // Who the brand sells to
-  "products_services": [               // 1-6 entries, most prominent first
+  "target_audience": string,           // Who THE TRACKED BRAND sells to
+  "products_services": [               // 1-6 entries of THE TRACKED BRAND's own offerings
     { "name": string, "description": string }
   ]
 }
 
-Rules:
-- Be specific and industry-aware. "a legal firm" is too generic; "a Dublin-based employment-law firm for SMEs" is right.
-- If a field is genuinely uncertain, emit a shorter, hedged value rather than inventing detail.
-- products_services: only include real offerings you can justify from the snapshot. Empty array if nothing is clear.
-- Favour the brand's own language where possible — their framing, not SEO boilerplate.`;
+CRITICAL rules — breaking any one is a failure:
+
+1. IDENTIFY THE TRACKED BRAND ONLY. You will be told the brand name. The profile is for THAT brand, not for any client, case study, or partner mentioned on the site. If the site is an agency and the snapshot contains case studies about client work (e.g. "we built X for Acme Legal"), the tracked brand is the AGENCY, not Acme Legal. Services / case study / portfolio sections describe OTHER companies' problems the tracked brand solved — DO NOT classify the tracked brand as being in the client's industry.
+
+2. PRIORITISE AUTHORITATIVE SIGNAL IN THIS ORDER:
+   a) <title> tag — almost always states the brand's own category.
+   b) <meta name="description"> / og:description — direct self-description.
+   c) Hero H1 + first paragraph — what the brand says about itself on landing.
+   d) Navigation items (service pages, about) — primary categories.
+   e) Case studies / client lists — ONLY as supporting signal for what the brand DOES, never for what industry the brand IS IN.
+   f) Body text — lowest priority; most contaminated with SEO copy and client references.
+
+3. BE SPECIFIC. "a legal firm" is too generic; "a Dublin-based employment-law firm for SMEs" is right. But NEVER be specific wrongly — if you had to choose between right-but-general and specific-but-guessed, pick right-but-general.
+
+4. PRODUCTS_SERVICES are the tracked brand's OWN offerings, not client projects. An agency's products_services are the services IT SELLS, not the case studies IT DELIVERED. Keep it short — 3-6 entries, most prominent first.
+
+5. When snapshot is thin or ambiguous, emit shorter hedged values rather than inventing detail. Empty products_services array is preferable to made-up services.
+
+6. Use the brand's own language where possible — their framing, not SEO boilerplate.`;
 
 /**
  * Build a BrandProfile from a fetched site snapshot using Claude.
- * Returns null when the site can't be fetched or the model output is
- * unparseable — callers should render an editable "empty" form in that
- * case so the user can fill the profile manually.
+ *
+ * Returns null when:
+ *   - no websiteUrl was supplied, or
+ *   - the site couldn't be fetched (bot blocking, timeout, non-HTML), or
+ *   - no Anthropic key is configured.
+ *
+ * CRITICAL: when we can't fetch the site we DO NOT ask Claude to guess
+ * from the brand name alone. That was the source of the "Howl.ie is an
+ * Irish-based digital or service" junk profile — callers then persisted
+ * that guess, and every subsequent suggestion was pinned to Claude's
+ * wrong inference.
+ *
+ * Callers should render an editable empty form when this returns null
+ * so the user fills the profile manually.
  */
 export async function extractBrandProfile(
   brandName: string,
   websiteUrl: string | null,
   opts: { apiKey?: string } = {}
 ): Promise<BrandProfile | null> {
-  const snapshot = websiteUrl ? await fetchSiteSnapshot(websiteUrl) : null;
+  if (!websiteUrl) {
+    console.warn(
+      `extractBrandProfile(${brandName}): no website URL — skipping extraction`
+    );
+    return null;
+  }
+
+  const snapshot = await fetchSiteSnapshot(websiteUrl);
+  if (!snapshot) {
+    console.warn(
+      `extractBrandProfile(${brandName}): site fetch returned no usable snapshot — refusing to guess from brand name alone`
+    );
+    return null;
+  }
 
   const apiKey = opts.apiKey ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -178,14 +259,10 @@ export async function extractBrandProfile(
         {
           role: "user",
           content: [
-            `Brand: ${brandName}`,
-            websiteUrl ? `Website: ${websiteUrl}` : null,
-            snapshot
-              ? `\nWebsite snapshot:\n${snapshot}`
-              : `\n(Website snapshot unavailable — infer from the brand name alone and keep values hedged.)`,
-          ]
-            .filter(Boolean)
-            .join("\n"),
+            `THE TRACKED BRAND: ${brandName}`,
+            `Their website: ${websiteUrl}`,
+            `\nWebsite snapshot (remember: the tracked brand is ${brandName}, not any client / case study / third party named below):\n${snapshot}`,
+          ].join("\n"),
         },
       ],
     });

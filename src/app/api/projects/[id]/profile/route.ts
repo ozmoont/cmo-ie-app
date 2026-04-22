@@ -120,8 +120,12 @@ export async function GET(
     }
   }
 
-  // Nothing to return — hand back an empty-but-valid profile so the UI
-  // can render the editable form in a consistent shape.
+  // Nothing to return. This happens when: (a) no website_url on the
+  // project, (b) extractBrandProfile returned null (site blocked our
+  // fetch, returned non-HTML, or came back too thin). Either way, hand
+  // back an empty-but-valid profile plus an `extraction_failed` flag
+  // so the UI tells the user "fill this in manually" instead of
+  // silently showing "Unknown" like it did yesterday.
   return NextResponse.json({
     profile: {
       short_description: "",
@@ -132,6 +136,8 @@ export async function GET(
     } as BrandProfile,
     profile_updated_at: null,
     auto_extracted: false,
+    extraction_failed: Boolean(project.website_url),
+    website_url: project.website_url,
   });
 }
 

@@ -21,6 +21,7 @@ import {
   Check,
   ArrowRight,
   Save,
+  AlertTriangle,
 } from "lucide-react";
 
 interface SuggestedPrompt {
@@ -39,6 +40,7 @@ export default function PromptsPage() {
     useState<PromptCategory>("awareness");
   const [suggestions, setSuggestions] = useState<SuggestedPrompt[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(
     new Set()
   );
@@ -125,6 +127,7 @@ export default function PromptsPage() {
 
   const fetchSuggestions = async () => {
     setLoadingSuggestions(true);
+    setSuggestionError(null);
     setAddedSuggestions(new Set());
 
     try {
@@ -136,14 +139,37 @@ export default function PromptsPage() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setSuggestions(data.suggestions);
-      } else {
-        setSuggestions(getFallbackSuggestions());
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        // Surface the real error rather than swapping in a silent
+        // fallback list. The fallback led users to think Claude was
+        // recommending law-firm prompts for unrelated brands.
+        const msg =
+          typeof data?.error === "string"
+            ? data.error
+            : `Suggestion request failed (HTTP ${res.status})`;
+        setSuggestions([]);
+        setSuggestionError(msg);
+        return;
       }
-    } catch {
-      setSuggestions(getFallbackSuggestions());
+
+      if (!Array.isArray(data.suggestions)) {
+        setSuggestions([]);
+        setSuggestionError(
+          "Claude returned an unexpected response. Check the brand profile and try again."
+        );
+        return;
+      }
+
+      setSuggestions(data.suggestions);
+    } catch (err) {
+      setSuggestions([]);
+      setSuggestionError(
+        err instanceof Error
+          ? err.message
+          : "Network error fetching suggestions. Try again."
+      );
     } finally {
       setLoadingSuggestions(false);
     }
@@ -252,6 +278,23 @@ export default function PromptsPage() {
           {loadingSuggestions && (
             <div className="pt-8">
               <LoadingPhrases type="suggesting" />
+            </div>
+          )}
+
+          {!loadingSuggestions && suggestionError && (
+            <div className="mt-6 border-l-2 border-danger pl-4 py-3 max-w-2xl">
+              <p className="text-xs uppercase tracking-[0.15em] text-danger font-semibold flex items-center gap-2">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Suggestion generation failed
+              </p>
+              <p className="mt-2 text-sm text-text-primary leading-relaxed">
+                {suggestionError}
+              </p>
+              <p className="mt-2 text-xs text-text-secondary leading-relaxed">
+                Most common cause: the brand profile above is empty or wrong.
+                Fill it in manually (or hit <span className="font-semibold">Re-extract</span> on the profile card) and try again.
+                If the error persists, check the server terminal for the underlying cause.
+              </p>
             </div>
           )}
 
@@ -431,19 +474,4 @@ export default function PromptsPage() {
       </section>
     </DashboardShell>
   );
-}
-
-function getFallbackSuggestions(): SuggestedPrompt[] {
-  return [
-    { text: "Who are the top corporate law firms in Dublin?", category: "awareness" },
-    { text: "Best Irish law firm for tech startups?", category: "consideration" },
-    { text: "What law firm should I use for GDPR compliance in Ireland?", category: "consideration" },
-    { text: "Compare Irish commercial law firms for SMEs", category: "decision" },
-    { text: "Which Dublin solicitor is best for employment disputes?", category: "decision" },
-    { text: "Recommended law firms for Irish property transactions", category: "awareness" },
-    { text: "Who handles the most M&A deals in Ireland?", category: "awareness" },
-    { text: "Best value law firm in Ireland for startups", category: "decision" },
-    { text: "Irish law firms with experience in fintech regulation", category: "consideration" },
-    { text: "What solicitors do Dublin tech companies use?", category: "consideration" },
-  ];
 }
