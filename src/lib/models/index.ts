@@ -7,7 +7,9 @@
 
 import type { AIModel } from "@/lib/types";
 import { anthropicAdapter } from "./anthropic";
+import { copilotAdapter } from "./copilot";
 import { geminiAdapter } from "./gemini";
+import { grokAdapter } from "./grok";
 import { openaiAdapter } from "./openai";
 import { perplexityAdapter } from "./perplexity";
 import type { ApiKeyOverrides, ModelAdapter } from "./types";
@@ -17,6 +19,8 @@ const REGISTRY: Partial<Record<AIModel, ModelAdapter>> = {
   chatgpt: openaiAdapter,
   perplexity: perplexityAdapter,
   gemini: geminiAdapter,
+  copilot: copilotAdapter,
+  grok: grokAdapter,
   // google_aio: not yet implemented — needs SerpAPI or similar integration.
 };
 

@@ -374,7 +374,9 @@ export async function getOrgBriefCredits(orgId: string) {
   const supabase = await createClient();
   const { data: org } = await supabase
     .from("organisations")
-    .select("brief_credits_used, brief_credits_reset_at, plan")
+    .select(
+      "brief_credits_used, brief_credits_reset_at, plan, agency_credit_pool"
+    )
     .eq("id", orgId)
     .single();
 
@@ -383,16 +385,20 @@ export async function getOrgBriefCredits(orgId: string) {
   }
 
   const now = new Date();
-  const resetAt = org.brief_credits_reset_at ? new Date(org.brief_credits_reset_at) : null;
+  const resetAt = org.brief_credits_reset_at
+    ? new Date(org.brief_credits_reset_at)
+    : null;
 
-  // Lazy reset: if reset_at has passed, reset the counter
+  // Lazy reset: if reset_at has passed, reset the org-level counter
+  // AND every project_credit_allocations.monthly_cap_used counter
+  // under this org. Agency pools roll the pool + per-project counters
+  // together so accounting stays consistent.
   let used = org.brief_credits_used;
   let nextResetAt = resetAt;
 
   if (!resetAt || resetAt < now) {
-    // Reset the credits
     const admin = createAdminClient();
-    const newResetAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+    const newResetAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     const { error } = await admin
       .from("organisations")
@@ -402,22 +408,182 @@ export async function getOrgBriefCredits(orgId: string) {
       })
       .eq("id", orgId);
 
-    if (error) {
-      console.error("Failed to reset brief credits:", error);
-      // Continue anyway, return current state
-    } else {
+    if (!error) {
       used = 0;
       nextResetAt = newResetAt;
+      // For agency plans, also reset per-project caps. We scope via
+      // project_id IN (SELECT id FROM projects WHERE org_id = ?) so
+      // cross-org rows can't be touched. Failures are logged but
+      // non-fatal — the pool reset already succeeded.
+      if (org.plan === "agency") {
+        const { data: projectIds } = await admin
+          .from("projects")
+          .select("id")
+          .eq("org_id", orgId);
+        const ids = (projectIds ?? []).map((p) => p.id as string);
+        if (ids.length > 0) {
+          const { error: capErr } = await admin
+            .from("project_credit_allocations")
+            .update({
+              monthly_cap_used: 0,
+              updated_at: new Date().toISOString(),
+            })
+            .in("project_id", ids);
+          if (capErr) {
+            console.error(
+              "Failed to reset project_credit_allocations on rollover:",
+              capErr
+            );
+          }
+        }
+      }
+    } else {
+      console.error("Failed to reset brief credits:", error);
     }
   }
 
-  const limit = PLAN_LIMITS[org.plan as keyof typeof PLAN_LIMITS].briefCredits;
-  const remaining = limit === Infinity ? Infinity : Math.max(0, limit - used);
+  // Agency plans take their limit from agency_credit_pool; everyone
+  // else uses the PLAN_LIMITS constant.
+  const limit =
+    org.plan === "agency"
+      ? org.agency_credit_pool
+      : PLAN_LIMITS[org.plan as keyof typeof PLAN_LIMITS].briefCredits;
+  const remaining =
+    limit === Infinity ? Infinity : Math.max(0, limit - used);
 
   return {
     used,
     limit,
     remaining,
     resetAt: nextResetAt?.toISOString() ?? null,
+    plan: org.plan as "trial" | "starter" | "pro" | "advanced" | "agency",
+    is_pool: org.plan === "agency",
   };
+}
+
+/**
+ * Per-project brief credit status. For non-agency plans we defer to
+ * the org-level counter (every project in a single-project plan draws
+ * from the same counter anyway). For agency plans we additionally
+ * check the per-project `monthly_cap` from project_credit_allocations.
+ *
+ * Returns the *effective* remaining — min(project_cap_remaining, pool_remaining).
+ * A caller must still respect both individually if they want per-counter
+ * metrics for display; the combined number is for gating.
+ */
+export async function getProjectBriefCredits(projectId: string) {
+  const supabase = await createClient();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("org_id")
+    .eq("id", projectId)
+    .maybeSingle<{ org_id: string }>();
+  if (!project?.org_id) {
+    throw new Error("Project not found");
+  }
+
+  const poolState = await getOrgBriefCredits(project.org_id);
+  if (poolState.plan !== "agency") {
+    return {
+      ...poolState,
+      project_cap: null as number | null,
+      project_cap_used: 0,
+      project_cap_remaining:
+        poolState.remaining === Infinity ? Infinity : poolState.remaining,
+      effective_remaining: poolState.remaining,
+    };
+  }
+
+  // Agency plan: look up the per-project allocation, default to
+  // uncapped when no row exists.
+  const { data: alloc } = await supabase
+    .from("project_credit_allocations")
+    .select("monthly_cap, monthly_cap_used")
+    .eq("project_id", projectId)
+    .maybeSingle<{ monthly_cap: number | null; monthly_cap_used: number }>();
+  const cap = alloc?.monthly_cap ?? null;
+  const capUsed = alloc?.monthly_cap_used ?? 0;
+  const capRemaining =
+    cap === null || cap === undefined
+      ? Infinity
+      : Math.max(0, cap - capUsed);
+
+  const effective =
+    poolState.remaining === Infinity
+      ? capRemaining
+      : capRemaining === Infinity
+        ? poolState.remaining
+        : Math.min(capRemaining, poolState.remaining);
+
+  return {
+    ...poolState,
+    project_cap: cap,
+    project_cap_used: capUsed,
+    project_cap_remaining: capRemaining,
+    effective_remaining: effective,
+  };
+}
+
+/**
+ * Consume one brief credit for a given project. Bumps the org pool
+ * counter and, when agency-tier and a per-project cap exists, the
+ * project's cap counter too. Uses the admin client — callers have
+ * already authorised the action at the API layer.
+ *
+ * Does NOT re-check remaining — the caller should have done that via
+ * getProjectBriefCredits right before generating the brief. This is
+ * the commit half of a check-then-commit pattern; the race window is
+ * small enough that over-drawing by one credit in a worst case is
+ * acceptable given the cost of over-engineering a transactional path.
+ */
+export async function consumeBriefCredit(projectId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: project } = await admin
+    .from("projects")
+    .select("org_id")
+    .eq("id", projectId)
+    .maybeSingle<{ org_id: string }>();
+  if (!project?.org_id) return;
+
+  // Bump org-level counter. We fetch-then-update rather than using an
+  // RPC — Supabase's typed RPC API requires codegen we don't have
+  // wired, and the tiny race window (concurrent brief creations on
+  // the same org) is acceptable per the docstring.
+  const { data: org } = await admin
+    .from("organisations")
+    .select("brief_credits_used, plan")
+    .eq("id", project.org_id)
+    .maybeSingle<{ brief_credits_used: number; plan: string }>();
+  if (org) {
+    await admin
+      .from("organisations")
+      .update({ brief_credits_used: (org.brief_credits_used ?? 0) + 1 })
+      .eq("id", project.org_id);
+  }
+
+  // For agency-tier orgs, also bump the per-project counter IF a row
+  // exists. We upsert the row if absent but with monthly_cap null so
+  // behaviour stays identical to "no cap recorded".
+  if (org?.plan === "agency") {
+    const { data: existing } = await admin
+      .from("project_credit_allocations")
+      .select("monthly_cap, monthly_cap_used")
+      .eq("project_id", projectId)
+      .maybeSingle<{ monthly_cap: number | null; monthly_cap_used: number }>();
+    if (existing) {
+      await admin
+        .from("project_credit_allocations")
+        .update({
+          monthly_cap_used: (existing.monthly_cap_used ?? 0) + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("project_id", projectId);
+    } else {
+      await admin.from("project_credit_allocations").insert({
+        project_id: projectId,
+        monthly_cap: null,
+        monthly_cap_used: 1,
+      });
+    }
+  }
 }

@@ -21,6 +21,7 @@ export const mockOrg: Organisation = {
   stripe_customer_id: null,
   stripe_subscription_id: null,
   trial_ends_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+  agency_credit_pool: 0,
   brief_credits_used: 0,
   brief_credits_reset_at: new Date(Date.now() + 30 * 86400000).toISOString(),
   created_at: new Date(Date.now() - 14 * 86400000).toISOString(),

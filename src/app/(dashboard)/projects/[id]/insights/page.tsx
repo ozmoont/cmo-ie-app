@@ -196,7 +196,7 @@ export default async function InsightsPage({
       )}
 
       {/* ── Per-prompt breakdown ── */}
-      <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 border-b border-border">
+      <section id="per-prompt" className="grid grid-cols-12 gap-6 md:gap-10 py-10 border-b border-border scroll-mt-24">
         <div className="col-span-12 md:col-span-3 space-y-1">
           <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
             <span
@@ -308,7 +308,7 @@ export default async function InsightsPage({
       </section>
 
       {/* ── Domains breakdown ── */}
-      <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 border-b border-border">
+      <section id="domains" className="grid grid-cols-12 gap-6 md:gap-10 py-10 border-b border-border scroll-mt-24">
         <div className="col-span-12 md:col-span-3 space-y-1">
           <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
             <span
@@ -362,7 +362,7 @@ export default async function InsightsPage({
       </section>
 
       {/* ── Gap opportunities ── */}
-      <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 border-b border-border">
+      <section id="gaps" className="grid grid-cols-12 gap-6 md:gap-10 py-10 border-b border-border scroll-mt-24">
         <div className="col-span-12 md:col-span-3 space-y-1">
           <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
             <span

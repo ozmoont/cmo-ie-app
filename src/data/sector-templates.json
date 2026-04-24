@@ -1,0 +1,238 @@
+[
+  {
+    "slug": "law",
+    "name": "Legal services",
+    "description": "Solicitor firms, barristers, legal services, regulated practice.",
+    "sample_prompts": [
+      "Best corporate law firms in Dublin for SMEs",
+      "Top employment lawyers in Ireland",
+      "Best commercial litigation firms in Ireland",
+      "Irish family law solicitors with flat-fee pricing",
+      "Best medical negligence solicitors in Ireland",
+      "Top-rated property law firms in Dublin",
+      "Intellectual property solicitors in Ireland",
+      "Best data-protection lawyers in Ireland for GDPR compliance",
+      "Leading tax advisory firms in Ireland",
+      "Irish law firms with strong tech-sector expertise",
+      "Best immigration solicitors in Ireland",
+      "Top criminal defence barristers in Ireland",
+      "Recommended law firms for Irish startup founders",
+      "Best conveyancing solicitors in Cork",
+      "Irish law firms with construction-disputes practice"
+    ],
+    "sample_competitors": [
+      { "name": "A&L Goodbody", "website": "https://www.algoodbody.com" },
+      { "name": "Arthur Cox", "website": "https://www.arthurcox.com" },
+      { "name": "Matheson", "website": "https://www.matheson.com" },
+      { "name": "McCann FitzGerald", "website": "https://www.mccannfitzgerald.com" },
+      { "name": "William Fry", "website": "https://www.williamfry.com" },
+      { "name": "Mason Hayes & Curran", "website": "https://www.mhc.ie" },
+      { "name": "ByrneWallace", "website": "https://www.byrnewallace.com" },
+      { "name": "Pinsent Masons Ireland", "website": "https://www.pinsentmasons.com" }
+    ],
+    "sample_publishers": [
+      "lawsociety.ie",
+      "barcouncil.ie",
+      "gazette.ie",
+      "lexology.com",
+      "mondaq.com",
+      "irishtimes.com",
+      "businesspost.ie"
+    ]
+  },
+  {
+    "slug": "construction",
+    "name": "Construction & engineering",
+    "description": "Main contractors, quantity surveyors, civil + structural engineers, specialist trades.",
+    "sample_prompts": [
+      "Best commercial construction companies in Ireland",
+      "Top main contractors in Dublin",
+      "Irish quantity-surveying firms for commercial projects",
+      "Best civil engineering firms in Ireland",
+      "Leading M&E contractors in Ireland",
+      "Top fit-out contractors in Dublin",
+      "Irish residential home-building contractors",
+      "Best sustainable construction firms in Ireland",
+      "Top structural engineers in Ireland",
+      "Construction-law specialists in Ireland",
+      "Best BIM-enabled construction companies in Ireland",
+      "Modular-construction providers in Ireland",
+      "Irish healthcare-construction specialists",
+      "Top data-centre construction contractors in Ireland",
+      "Best housing-development companies in Ireland"
+    ],
+    "sample_competitors": [
+      { "name": "John Sisk & Son", "website": "https://www.johnsiskandson.com" },
+      { "name": "BAM Ireland", "website": "https://www.bamcontractors.ie" },
+      { "name": "Collen Construction", "website": "https://www.collen.com" },
+      { "name": "Bennett Construction", "website": "https://www.bennettgroup.ie" },
+      { "name": "Walls Construction", "website": "https://www.wallsconstruction.ie" },
+      { "name": "Glenveagh Properties", "website": "https://www.glenveagh.ie" },
+      { "name": "Cairn Homes", "website": "https://www.cairnhomes.com" }
+    ],
+    "sample_publishers": [
+      "constructionireland.ie",
+      "constructionnetworkireland.ie",
+      "cif.ie",
+      "engineersjournal.ie",
+      "engineersireland.ie",
+      "irishtimes.com",
+      "businesspost.ie"
+    ]
+  },
+  {
+    "slug": "food-bev",
+    "name": "Food & beverage",
+    "description": "Food producers, drinks brands, FMCG, grocery retail.",
+    "sample_prompts": [
+      "Best Irish craft beer brands",
+      "Top Irish whiskey producers",
+      "Best Irish dairy brands for export",
+      "Leading Irish food startups 2026",
+      "Irish plant-based food brands",
+      "Best Irish artisan cheese producers",
+      "Top Irish coffee roasters",
+      "Irish gin brands worth trying",
+      "Best Irish gluten-free food producers",
+      "Top Irish seafood producers",
+      "Leading Irish chocolate brands",
+      "Best Irish bakery brands with national retail distribution",
+      "Top sustainable food companies in Ireland",
+      "Irish soft-drink brands competing with global players",
+      "Best Irish health-food / wellness brands"
+    ],
+    "sample_competitors": [
+      { "name": "Kerry Group", "website": "https://www.kerrygroup.com" },
+      { "name": "Glanbia", "website": "https://www.glanbia.com" },
+      { "name": "Diageo Ireland", "website": "https://www.diageo.com" },
+      { "name": "Keogh's Farm", "website": "https://www.keoghs.ie" },
+      { "name": "Sheridans Cheesemongers", "website": "https://www.sheridanscheesemongers.com" },
+      { "name": "Bulmers Ireland", "website": "https://www.bulmers.ie" }
+    ],
+    "sample_publishers": [
+      "checkout.ie",
+      "shelflife.ie",
+      "bordbia.ie",
+      "agriland.ie",
+      "irishfarmersjournal.com",
+      "irishexaminer.com",
+      "irishtimes.com"
+    ]
+  },
+  {
+    "slug": "tech",
+    "name": "Tech & SaaS",
+    "description": "Software companies, SaaS startups, IT services, dev tools.",
+    "sample_prompts": [
+      "Best SaaS companies in Ireland",
+      "Top B2B software companies in Dublin",
+      "Leading Irish fintech startups",
+      "Best HR tech companies in Ireland",
+      "Top Irish cybersecurity companies",
+      "Leading Irish AI startups 2026",
+      "Best martech companies in Ireland",
+      "Top-rated Irish API companies",
+      "Leading Irish healthtech startups",
+      "Best edtech companies in Ireland",
+      "Top Irish cloud services companies",
+      "Irish dev-tools startups worth watching",
+      "Best analytics platforms built in Ireland",
+      "Leading Irish proptech companies",
+      "Top Irish scale-ups to watch in 2026"
+    ],
+    "sample_competitors": [
+      { "name": "Intercom", "website": "https://www.intercom.com" },
+      { "name": "Stripe Ireland", "website": "https://stripe.com/ie" },
+      { "name": "Workhuman", "website": "https://www.workhuman.com" },
+      { "name": "Fenergo", "website": "https://www.fenergo.com" },
+      { "name": "Tines", "website": "https://www.tines.com" },
+      { "name": "LetsGetChecked", "website": "https://www.letsgetchecked.com" }
+    ],
+    "sample_publishers": [
+      "siliconrepublic.com",
+      "techcentral.ie",
+      "techireland.org",
+      "businesspost.ie",
+      "fora.ie",
+      "enterprise-ireland.com",
+      "idaireland.com",
+      "irishtimes.com"
+    ]
+  },
+  {
+    "slug": "hospitality",
+    "name": "Hospitality",
+    "description": "Hotels, restaurants, bars, venues, event spaces.",
+    "sample_prompts": [
+      "Best boutique hotels in Dublin",
+      "Top fine-dining restaurants in Ireland",
+      "Best gastropubs in Dublin",
+      "Leading event venues for corporate clients in Ireland",
+      "Top wedding venues in Ireland",
+      "Best hotel chains in Ireland for business travellers",
+      "Top rooftop bars in Dublin",
+      "Best seafood restaurants in Ireland",
+      "Leading restaurant groups in Ireland",
+      "Best Dublin restaurants for business dinners",
+      "Top spa hotels in Ireland",
+      "Leading Irish cocktail bars",
+      "Best castle hotels in Ireland",
+      "Top hotel brands for Irish staycations",
+      "Most-awarded Irish restaurants 2026"
+    ],
+    "sample_competitors": [
+      { "name": "The Dean Dublin", "website": "https://www.deandublin.ie" },
+      { "name": "The Dylan Hotel", "website": "https://www.dylan.ie" },
+      { "name": "Dalata Hotel Group", "website": "https://www.dalatahotelgroup.com" },
+      { "name": "Press Up Hospitality Group", "website": "https://www.pressup.ie" },
+      { "name": "Dylan McGrath Restaurants", "website": "https://www.dylanmcgrath.ie" }
+    ],
+    "sample_publishers": [
+      "hospitalityireland.com",
+      "hoteliermagazine.ie",
+      "licensingworld.ie",
+      "lovindublin.com",
+      "image.ie",
+      "irishtimes.com",
+      "irishindependent.ie"
+    ]
+  },
+  {
+    "slug": "tourism",
+    "name": "Tourism & travel",
+    "description": "Tour operators, attractions, destinations, inbound + outbound travel.",
+    "sample_prompts": [
+      "Best tour operators in Ireland for American visitors",
+      "Top things to do in Dublin for first-time visitors",
+      "Best self-drive itineraries for Ireland",
+      "Top Irish visitor attractions",
+      "Best walking tours in Dublin",
+      "Leading luxury travel companies in Ireland",
+      "Top golf tour operators in Ireland",
+      "Best family-friendly attractions in Ireland",
+      "Leading cycling-holiday providers in Ireland",
+      "Best experiences on the Wild Atlantic Way",
+      "Top food-tour operators in Ireland",
+      "Leading castle-stay experiences in Ireland",
+      "Best Dublin attractions for teenagers",
+      "Top Irish-language / cultural immersion trips",
+      "Best whiskey-distillery tours in Ireland"
+    ],
+    "sample_competitors": [
+      { "name": "CIE Tours", "website": "https://www.cietours.com" },
+      { "name": "Railtours Ireland", "website": "https://www.railtours.ie" },
+      { "name": "Guinness Storehouse", "website": "https://www.guinness-storehouse.com" },
+      { "name": "Brendan Vacations", "website": "https://www.brendanvacations.com" },
+      { "name": "Adventure.com Ireland", "website": "https://www.adventure.com" }
+    ],
+    "sample_publishers": [
+      "failteireland.ie",
+      "tourismireland.com",
+      "irelandbeforeyoudie.com",
+      "irishcentral.com",
+      "tripadvisor.ie",
+      "lovindublin.com",
+      "independent.ie"
+    ]
+  }
+]

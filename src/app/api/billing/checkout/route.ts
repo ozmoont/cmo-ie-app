@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
-import { getOrCreateStripeCustomer } from "@/lib/billing";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+import { getOrCreateStripeCustomer, getStripe } from "@/lib/billing";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -64,7 +61,7 @@ export async function POST(request: Request) {
     );
 
     // Create checkout session
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       payment_method_types: ["card"],

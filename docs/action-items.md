@@ -1,6 +1,6 @@
 # Action items for OG
 
-_Last synced: 21 April 2026, ~10:58._
+_Last synced: 22 April 2026 — Phase 2 complete, starting Phase 3._
 
 This is the running list of things only the founder can do (credentials, business calls, commits, deploys). Tick items with `[x]` as you go; Claude will update this file during sessions to reflect progress.
 
@@ -64,6 +64,15 @@ Fill any of these to light up more adapters. Missing keys = that model is skippe
 - [ ] **Product designer (Phase 2, weeks 14–18).** 20–40 hours for Sources + Gap Analysis + Actions v2 polish. €1.5–3k. Start sourcing now; Howl's network first.
 - [ ] **Data-collection contractor (originally Phase 1).** Now deferred — tonight's rebuild covered 4 of 5 models via direct APIs. Only re-engage if we decide ChatGPT-without-search isn't enough and we need UI-scraped ChatGPT, or if Google AIO via SerpAPI proves inadequate.
 
+## 📌 Near-term polish — parked
+
+These are small-but-real items we consciously set aside while moving into Phase 3. Each is scoped to roughly half-a-day of work and none block Phase 3. Pick them up between Phase 3 milestones when momentum drops, or sweep them in the Phase 5 "launch readiness" buffer week.
+
+- [ ] **#37 — Verify Claude inline-citation parsing with a citation-heavy prompt.** The Anthropic adapter's inline-citation detector was written against 2-3 test responses. Run a prompt that reliably pulls 10+ citations (e.g. "best SaaS companies in Ireland with sources") and spot-check that `was_cited_inline` matches the actual inline references, not just the sidebar list. If it drifts, tighten the matcher. Zero data-loss risk until then — we still store every source; inline-flag accuracy just affects the `citation_rate` column on Sources.
+- [ ] **#40 — Wire competitor suggestions into the run engine.** `lib/competitor-suggestions.ts` has the infrastructure (`filterUntrackedBrands`, `recordSuggestionObservations`, `getPendingSuggestions`) and the DB table (migration 008) already exists. Missing: a call at the end of each run that extracts untracked brand names from `result_brand_mentions` and calls `recordSuggestionObservations`. Plus the "Track this competitor" button on the Competitors page. Roughly a day.
+- [ ] **#45 — Improve summariser copy with actual numbers.** `summariseScore` / `summarisePosition` / `summariseSentiment` in `lib/format.ts` currently reach for generic phrasing. Rewrite to pull in specifics from the data — e.g. "Mentioned in 3 of 12 checks (25%) — Claude saw you, ChatGPT and Perplexity didn't." The hooks are already in place; it's a copy + test-cases pass.
+- [ ] **#31 — Rotate Anthropic + Supabase keys.** Still live on the urgent list above. Keep it there.
+
 ## 📚 Reading — when you have 10 min
 
 Written tonight, worth a skim before next session:
@@ -89,14 +98,28 @@ Landed in the 19–21 April sprint:
 - [x] **Migration 008 + suggestion helpers.** `competitor_suggestions` table. `filterUntrackedBrands`, `recordSuggestionObservations`, `getPendingSuggestions` in `lib/competitor-suggestions.ts` with unit tests.
 - [x] **Migration 009 — brand profile.** Structured `profile_*` columns on projects. `extractBrandProfile` + `fetchSiteSnapshot` + `normaliseProfile` in `lib/brand-profile.ts` with unit tests.
 
-Currently: **96 tests passing, lint + typecheck clean.** Every feature shipped green.
+Currently: **170 tests passing, lint + typecheck clean.** All of Phase 1 + Phase 2 shipped green.
 
-Next up:
+Phase 2 wrap-up additions (22 April 2026):
 
-1. **Wire competitor suggestions into the run engine.** Extract "all brand names in response" (Claude call), diff against tracked set, feed to `recordSuggestionObservations`. Infrastructure already exists; just needs the call site.
-2. **Wire brand-profile extraction into onboarding.** New project → fetch site → populate profile columns. Edit UI. Plumb into `/api/prompts/suggest` to read from stored profile instead of re-fetching.
-3. **Sources UI scaffold.** `/projects/[id]/sources/` — Domains + URLs tables reading `citations` data that's now being captured per-run.
-4. **Dashboard filter bar.** Tags (AND/OR), topics, country, model, date range — reading the schema from migration 007.
+- [x] **P2-C — Sources / URLs drill-down.** `getProjectSourceUrls` + `getProjectSourceUrlDetail` in `lib/queries/sources.ts`; `/api/projects/[id]/sources/urls` route; real URLs page with `?domain=` / `?page_type=` / `?url=` (drawer) support.
+- [x] **P2-D1 — Gap Analysis algorithm.** `computeGapScore` + `getDomainGaps` + `getUrlGaps` in `lib/queries/gap-analysis.ts`. 9 unit tests locking in the scoring curve + ordering.
+- [x] **P2-D2 — Gap Analysis page.** `/projects/[id]/gaps/{domains,urls}` with star ranking, competitor chips, source-type playbook text, "Act on this" CTAs. Sidebar entry added.
+- [x] **P2-E1 — Migration 015.** `source_gap JSONB` on `polish_requests` + GIN index. (Renumbered from scope-doc's 011 since that slot was taken.)
+- [x] **P2-E2 — Gap-aware brief generator.** `lib/gap-brief-templates.ts` — source-type-tailored playbook instructions. Brief route now has two modes (classic + gap). 12 unit tests covering playbook uniqueness + context rendering + title derivation.
+- [x] **P2-E3 — Actions v2 UI.** `/projects/[id]/actions/gap` guided flow (idle → briefed → polished). Gap rows' "Act on this" route here now.
+- [x] **P2-F1 — Dashboard drill-downs.** `DrilldownLabel` component; every Overview section label wired to the matching Insights / Sources / Gaps destination with scroll-to anchors.
+- [x] **P2-F2 — Per-prompt detail page.** `lib/queries/prompt-detail.ts`; `/projects/[id]/prompts/[promptId]` with visibility %, inline SVG sparkline, latest-per-model snapshot, sources / brands panels, collapsible response history.
+- [x] **Migration 014 — Action-table RLS.** Fixed the "navigate away mid-generation loses everything" bug.
+
+Next up (Phase 3 — integrations + agency tier, weeks 15-20):
+
+1. **Public REST API v1.** OAuth app + scoped read endpoints (`/projects`, `/metrics`, `/prompts`, `/chats`, `/sources`, `/competitors`). Rate limits, pagination, docs site.
+2. **MCP server.** Wrap the REST API so Claude connectors can query visibility / gaps / sources data in-chat. Biggest sales-narrative payoff-per-hour on the plan.
+3. **Credit-pool pricing (agency tier).** New plan type with shared credit pool across client projects. Reuse Stripe.
+4. **Multi-client org management.** Agency dashboard, per-client allocation, invite flow polish.
+5. **CSV export + model coverage expansion.** Copilot + Grok as trackable models.
+6. **Agency tier launch.** `/agency` landing page + 3 seeded demos from Howl's network.
 
 ---
 

@@ -1,10 +1,39 @@
+/**
+ * POST /api/projects/[id]/actions/brief
+ *
+ * Generates a content brief. Two modes:
+ *
+ * 1. Classic mode — body `{ actionTitle, promptText, rootCause?, actionDescription? }`.
+ *    Used by the existing action-plan flow. Unchanged behaviour.
+ *
+ * 2. Gap mode (Phase 2-E) — body `{ gap: SourceGap, actionTitle? }`.
+ *    Uses source-type-tailored playbook instructions so the brief
+ *    matches the shape of the opportunity (pitch, reply, submission,
+ *    self-audit, etc.). Falls through to a decent generic brief if
+ *    the gap's source_type is null.
+ *
+ * Both modes consume one brief credit and return `{ brief, credits }`.
+ * Gap-mode additionally echoes the normalised gap back so the UI can
+ * persist it with the polish_request in a subsequent POST.
+ */
+
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getProject, getOrgBriefCredits } from "@/lib/queries";
+import {
+  consumeBriefCredit,
+  getProject,
+  getProjectBriefCredits,
+} from "@/lib/queries";
+import type { SourceGap } from "@/lib/types";
+import {
+  BRIEF_WRITER_BASE,
+  deriveActionTitle,
+  playbookInstruction,
+  renderGapContext,
+} from "@/lib/gap-brief-templates";
 
-const BRIEF_WRITER_SYSTEM = `You are a senior Content Strategist and Brief Writer specialising in GEO (Generative Engine Optimisation) for the Irish market.
+const CLASSIC_SYSTEM = `You are a senior Content Strategist and Brief Writer specialising in GEO (Generative Engine Optimisation) for the Irish market.
 
 Given an action recommendation from our strategy team, create a detailed content brief that a marketing team or agency can execute immediately.
 
@@ -20,6 +49,20 @@ The brief should include:
 Write in a professional but practical tone. Be specific to the brand and Irish market.
 Return the brief as clean markdown (no code fences wrapping it).`;
 
+interface ClassicBriefBody {
+  actionTitle: string;
+  promptText: string;
+  rootCause?: string;
+  actionDescription?: string;
+}
+
+interface GapBriefBody {
+  gap: SourceGap;
+  actionTitle?: string;
+}
+
+type BriefBody = Partial<ClassicBriefBody & GapBriefBody>;
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -27,7 +70,6 @@ export async function POST(
   try {
     const { id: projectId } = await params;
 
-    // Auth check
     const supabase = await createClient();
     const {
       data: { user },
@@ -46,14 +88,32 @@ export async function POST(
       );
     }
 
-    const { actionTitle, actionDescription, promptText, rootCause } =
-      await request.json();
+    const body = (await request.json()) as BriefBody;
 
-    if (!actionTitle || !promptText) {
+    const isGapMode = Boolean(body.gap);
+    if (
+      !isGapMode &&
+      (!body.actionTitle || !body.promptText)
+    ) {
       return NextResponse.json(
-        { error: "actionTitle and promptText are required" },
+        {
+          error:
+            "actionTitle and promptText are required (or pass a `gap` object for gap-mode)",
+        },
         { status: 400 }
       );
+    }
+    if (isGapMode) {
+      const g = body.gap as SourceGap;
+      if (!g.scope || !g.domain) {
+        return NextResponse.json(
+          {
+            error:
+              "gap.scope and gap.domain are required",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const project = await getProject(projectId);
@@ -61,42 +121,66 @@ export async function POST(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    // Check brief credits before generation
-    const credits = await getOrgBriefCredits(project.org_id);
-    if (credits.remaining === 0) {
+    const credits = await getProjectBriefCredits(projectId);
+    if (credits.effective_remaining === 0) {
       return NextResponse.json(
         {
-          error: "Brief credit limit reached",
+          error:
+            credits.project_cap !== null &&
+            credits.project_cap_remaining === 0
+              ? "This project has hit its monthly cap. Ask the agency owner to raise it or wait for the reset."
+              : "Brief credit limit reached",
           credits,
         },
         { status: 403 }
       );
     }
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    let system: string;
+    let userMessage: string;
+    let echoedGap: SourceGap | null = null;
+    let actionTitle: string | undefined;
+
+    if (isGapMode) {
+      const gap = body.gap as SourceGap;
+      // Make sure captured_at is set — clients sometimes omit it.
+      echoedGap = {
+        ...gap,
+        captured_at: gap.captured_at ?? new Date().toISOString(),
+      };
+      actionTitle = body.actionTitle ?? deriveActionTitle(echoedGap);
+      system = BRIEF_WRITER_BASE + playbookInstruction(echoedGap);
+      userMessage = `Brand: ${project.brand_name}
+Website: ${project.website_url ?? "not provided"}
+
+You are acting on a specific AI-visibility gap. The facts:
+${renderGapContext(echoedGap)}
+
+Brief this gap for the agency team. Name the competitor-advantage clearly — the output is useless without it. Be specific to ${project.brand_name} and the Irish market where relevant.`;
+    } else {
+      const b = body as ClassicBriefBody;
+      actionTitle = b.actionTitle;
+      system = CLASSIC_SYSTEM;
+      userMessage = `Brand: ${project.brand_name}
+Website: ${project.website_url ?? "not provided"}
+
+Visibility gap prompt: "${b.promptText}"
+Root cause: ${b.rootCause ?? "Not specified"}
+
+Action to brief:
+Title: ${b.actionTitle}
+Description: ${b.actionDescription ?? "Not specified"}
+
+Please create a detailed content brief for this action.`;
+    }
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 3000,
-      system: BRIEF_WRITER_SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: `Brand: ${project.brand_name}
-Website: ${project.website_url ?? "not provided"}
-
-Visibility gap prompt: "${promptText}"
-Root cause: ${rootCause ?? "Not specified"}
-
-Action to brief:
-Title: ${actionTitle}
-Description: ${actionDescription ?? "Not specified"}
-
-Please create a detailed content brief for this action.`,
-        },
-      ],
+      system,
+      messages: [{ role: "user", content: userMessage }],
     });
 
     const textBlock = response.content.find((b) => b.type === "text");
@@ -104,26 +188,22 @@ Please create a detailed content brief for this action.`,
       throw new Error("No brief response");
     }
 
-    // Successfully generated brief - increment credits atomically
-    const admin = createAdminClient();
-    const { error: updateError } = await admin
-      .from("organisations")
-      .update({
-        brief_credits_used: credits.used + 1,
-      })
-      .eq("id", project.org_id);
-
-    if (updateError) {
-      console.error("Failed to update brief credits:", updateError);
-      // Still return the brief, but log the credit update failure
+    // Commit credit consumption — bumps org pool and per-project cap
+    // when the org is on the agency plan. Tolerate failure so the
+    // user still gets their brief.
+    try {
+      await consumeBriefCredit(projectId);
+    } catch (err) {
+      console.error("Failed to consume brief credit:", err);
     }
 
-    // Get updated credits for response
-    const updatedCredits = await getOrgBriefCredits(project.org_id);
+    const updatedCredits = await getProjectBriefCredits(projectId);
 
     return NextResponse.json({
       brief: textBlock.text,
       credits: updatedCredits,
+      gap: echoedGap,
+      actionTitle,
     });
   } catch (error) {
     console.error("Brief generation error:", error);

@@ -37,6 +37,7 @@ import {
 import { RunTrigger } from "@/components/dashboard/run-trigger";
 import { RecentChats } from "@/components/dashboard/recent-chats";
 import { BlurGate } from "@/components/dashboard/blur-gate";
+import { DrilldownLabel } from "@/components/dashboard/drilldown-label";
 import { ArrowRight } from "lucide-react";
 import type { Metadata } from "next";
 
@@ -160,13 +161,44 @@ export default async function ProjectDashboard({
       };
     });
 
-  // Derived copy
-  const scoreSummary = summariseScore(score, project.brand_name);
-  const positionSummary = summarisePosition(avgPosition, project.brand_name);
+  // Derived copy. Feed the actual numbers + model-split into the
+  // summarisers so the dashboard reads "Mentioned in 4 of 15 checks
+  // — Claude saw you, ChatGPT didn't" instead of generic filler.
+  const mentionedByModel = new Map<string, boolean>();
+  for (const r of latestResults) {
+    const existing = mentionedByModel.get(r.model) ?? false;
+    mentionedByModel.set(r.model, existing || r.brand_mentioned);
+  }
+  const mentionedModels: string[] = [];
+  const missedModels: string[] = [];
+  for (const [m, saw] of mentionedByModel) {
+    const label = MODEL_LABELS[m as keyof typeof MODEL_LABELS] ?? m;
+    if (saw) mentionedModels.push(label);
+    else missedModels.push(label);
+  }
+
+  const scoreSummary = summariseScore(score, project.brand_name, {
+    total: latestResults.length,
+    mentioned: mentionedResults.length,
+    mentionedModels,
+    missedModels,
+  });
+  const positionSummary = summarisePosition(avgPosition, project.brand_name, {
+    mentionedCount: mentionedResults.length,
+    totalModels: project.models.length,
+  });
   const sentimentSummary = summariseSentiment(
     sentimentScore,
     totalMentions,
-    project.brand_name
+    project.brand_name,
+    {
+      positive:
+        sentimentDist.find((d) => d.sentiment === "positive")?.count ?? 0,
+      neutral:
+        sentimentDist.find((d) => d.sentiment === "neutral")?.count ?? 0,
+      negative:
+        sentimentDist.find((d) => d.sentiment === "negative")?.count ?? 0,
+    }
   );
   const lastScannedAt = runs[0]?.completed_at ?? runs[0]?.created_at ?? null;
   const modelsText = project.models.map((m) => MODEL_LABELS[m]).join(", ");
@@ -194,8 +226,17 @@ export default async function ProjectDashboard({
             {modelsText || `${project.models.length} AI models`}.
           </p>
         </div>
-        <div className="col-span-12 md:col-span-4 md:flex md:justify-end md:items-end">
+        <div className="col-span-12 md:col-span-4 md:flex md:justify-end md:items-end md:flex-col md:gap-2">
           <RunTrigger projectId={projectId} />
+          {runs.length > 0 && (
+            <Link
+              href={`/projects/${projectId}/report`}
+              className="inline-flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary"
+            >
+              Download report (PDF)
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          )}
         </div>
       </header>
 
@@ -259,10 +300,12 @@ export default async function ProjectDashboard({
       {/* ── Hero: Visibility score ── type-led, no card */}
       {runs.length > 0 && (
         <section className="grid grid-cols-12 gap-6 md:gap-10 py-12 md:py-20 border-b border-border">
-          <p className="col-span-12 md:col-span-3 text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold md:pt-6 flex items-center gap-2">
-            <span aria-hidden="true" className="inline-block w-4 h-[2px] bg-emerald-dark" />
+          <DrilldownLabel
+            href={`/projects/${projectId}/insights`}
+            className="col-span-12 md:col-span-3 md:pt-6"
+          >
             AI visibility
-          </p>
+          </DrilldownLabel>
           <div className="col-span-12 md:col-span-9 space-y-6">
             <div className="flex items-baseline gap-4 flex-wrap">
               <div className="flex items-baseline gap-2">
@@ -340,9 +383,12 @@ export default async function ProjectDashboard({
       {/* ── Secondary metrics: Position + Sentiment ── type-led, two-col */}
       {runs.length > 0 && (
         <section className="grid grid-cols-12 gap-6 md:gap-10 py-12 md:py-16 border-b border-border">
-          <p className="col-span-12 md:col-span-3 text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold">
+          <DrilldownLabel
+            href={`/projects/${projectId}/insights#per-prompt`}
+            className="col-span-12 md:col-span-3"
+          >
             How you appear
-          </p>
+          </DrilldownLabel>
           <div className="col-span-12 md:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-12">
             {/* Position */}
             <div className="space-y-3">
@@ -431,9 +477,9 @@ export default async function ProjectDashboard({
       {runs.length > 0 && (
         <section className="grid grid-cols-12 gap-6 md:gap-10 py-12 md:py-16 border-b border-border">
           <div className="col-span-12 md:col-span-3 space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold">
+            <DrilldownLabel href={`/projects/${projectId}/insights#per-prompt`}>
               Trend
-            </p>
+            </DrilldownLabel>
             <p className="text-sm text-text-secondary leading-relaxed">
               Whether {project.brand_name}&apos;s AI visibility is improving or
               declining, broken down by model so you can focus on the platforms
@@ -457,9 +503,9 @@ export default async function ProjectDashboard({
       {runs.length > 0 && (
         <section className="grid grid-cols-12 gap-6 md:gap-10 py-12 md:py-16 border-b border-border">
           <div className="col-span-12 md:col-span-3 space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold">
+            <DrilldownLabel href={`/projects/${projectId}/sources/domains`}>
               Sources
-            </p>
+            </DrilldownLabel>
             <p className="text-sm text-text-secondary leading-relaxed">
               The websites AI models cite when answering your tracked prompts.
               To get mentioned, you need to appear here - so look at which
@@ -470,21 +516,30 @@ export default async function ProjectDashboard({
             <BlurGate blurred={blurResults} feature="citation sources & competitor tracking">
               <div className="grid gap-10 md:gap-12 lg:grid-cols-2">
                 <div>
-                  <h3 className="text-base font-semibold text-text-primary mb-4">
+                  <Link
+                    href={`/projects/${projectId}/sources/domains`}
+                    className="group inline-flex items-center gap-1.5 text-base font-semibold text-text-primary mb-4 hover:text-emerald-dark transition-colors"
+                  >
                     Top cited domains
-                  </h3>
+                    <ArrowRight className="h-3.5 w-3.5 opacity-0 -translate-x-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0" />
+                  </Link>
                   <CitationDomains domains={citationDomains} />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-text-primary mb-4">
+                  <Link
+                    href={`/projects/${projectId}/gaps/domains`}
+                    className="group inline-flex items-center gap-1.5 text-base font-semibold text-text-primary mb-4 hover:text-emerald-dark transition-colors"
+                  >
                     Competitor visibility
-                  </h3>
+                    <ArrowRight className="h-3.5 w-3.5 opacity-0 -translate-x-1 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0" />
+                  </Link>
                   <CompetitorAppearances competitors={competitorAppearances} />
                   <p className="text-xs text-text-muted leading-relaxed mt-4 max-w-md">
                     If a competitor has more citations than {project.brand_name},
                     AI is recommending them. Check what content they have that
                     you don&apos;t - usually a clear FAQ, pricing, or comparison
-                    page.
+                    page. Click &ldquo;Competitor visibility&rdquo; above to see
+                    the ranked gap list.
                   </p>
                 </div>
               </div>
@@ -497,9 +552,9 @@ export default async function ProjectDashboard({
       {runs.length > 0 && (
         <section className="grid grid-cols-12 gap-6 md:gap-10 py-12 md:py-16 border-b border-border">
           <div className="col-span-12 md:col-span-3 space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold">
+            <DrilldownLabel href={`/projects/${projectId}/insights#per-prompt`}>
               Detail
-            </p>
+            </DrilldownLabel>
             <p className="text-sm text-text-secondary leading-relaxed">
               Sentiment distribution and where in a response you tend to appear.
               Being mentioned at #1 means AI recommends you first.
@@ -530,9 +585,9 @@ export default async function ProjectDashboard({
       {runs.length > 0 && recentChats.length > 0 && (
         <section className="grid grid-cols-12 gap-6 md:gap-10 py-12 md:py-16">
           <div className="col-span-12 md:col-span-3 space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold">
+            <DrilldownLabel href={`/projects/${projectId}/insights#per-prompt`}>
               Responses
-            </p>
+            </DrilldownLabel>
             <p className="text-sm text-text-secondary leading-relaxed">
               The actual replies AI gave. Look for responses where
               you&apos;re <em className="not-italic text-text-primary font-medium">

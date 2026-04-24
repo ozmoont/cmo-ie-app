@@ -42,10 +42,26 @@ function canonicaliseUrl(raw: string): string {
  * itself". See that route for the original rationale.
  *
  * Exported separately so tests and other extractors can reuse it.
+ *
+ * Fallback chain (in order):
+ *   1. Direct fetch with a real-browser UA. Fast, no dependency.
+ *   2. Jina Reader (`https://r.jina.ai/<url>`) when the direct fetch
+ *      returns no extractable content. Jina runs a headless browser
+ *      and returns rendered markdown — gets us past Cloudflare bot
+ *      protection and JS-rendered SPAs (Webflow, Framer, Next.js in
+ *      SPA mode). Free tier is ~1M reads/mo.
+ *
+ * The fallback is opt-out via opts.skipJinaFallback (for tests that
+ * don't want network). JINA_API_KEY env var raises the rate cap; we
+ * pass it when present but still work without one.
  */
 export async function fetchSiteSnapshot(
   url: string,
-  opts: { timeoutMs?: number; maxBytes?: number } = {}
+  opts: {
+    timeoutMs?: number;
+    maxBytes?: number;
+    skipJinaFallback?: boolean;
+  } = {}
 ): Promise<string | null> {
   const { timeoutMs = 8000, maxBytes = 200_000 } = opts;
   let body: string;
@@ -158,21 +174,107 @@ export async function fetchSiteSnapshot(
     return null;
   }
 
-  // If we only extracted junk (e.g. a cookie banner title), bail. A
-  // snapshot shorter than ~80 chars almost never yields a useful
-  // profile and persisting "Unknown" fields is worse than failing
-  // loudly.
+  // If we only extracted junk (e.g. a cookie banner title), or the
+  // page came back empty (JS-rendered SPA), fall back to Jina Reader
+  // which runs a headless browser server-side. Opt-out with
+  // skipJinaFallback for tests.
   const joined = parts.join("\n").slice(0, 3000);
-  if (joined.length < 80) {
+  if (joined.length >= 80) {
+    console.info(
+      `fetchSiteSnapshot: ${canonicalUrl} OK direct, ${joined.length} chars extracted`
+    );
+    return joined;
+  }
+
+  console.warn(
+    `fetchSiteSnapshot: ${canonicalUrl} direct fetch too thin (${joined.length} chars) — trying Jina Reader fallback`
+  );
+
+  if (opts.skipJinaFallback) return null;
+  return fetchViaJinaReader(canonicalUrl, {
+    timeoutMs: 12000,
+    maxBytes: 200_000,
+  });
+}
+
+/**
+ * Jina Reader fallback. `https://r.jina.ai/<url>` returns clean
+ * markdown after a headless-browser render — gets us past
+ * Cloudflare / Webflow / Framer bot walls.
+ *
+ * Exported for tests; callers should prefer fetchSiteSnapshot.
+ */
+export async function fetchViaJinaReader(
+  targetUrl: string,
+  opts: { timeoutMs?: number; maxBytes?: number } = {}
+): Promise<string | null> {
+  const { timeoutMs = 12000, maxBytes = 200_000 } = opts;
+  const apiKey = process.env.JINA_API_KEY?.trim();
+  // r.jina.ai accepts the URL path-embedded. Scheme of the inner URL
+  // is preserved so http:// vs https:// round-trips correctly.
+  const jinaUrl = `https://r.jina.ai/${targetUrl}`;
+  try {
+    const res = await fetch(jinaUrl, {
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "follow",
+      headers: {
+        // Markdown output is smallest + easiest to post-process.
+        Accept: "text/markdown, text/plain",
+        "Accept-Encoding": "identity",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        // Tell Jina we want cleaner output (drops nav, footer, repeat
+        // cookie-banner text). Supported header per docs.
+        "X-Return-Format": "markdown",
+      },
+    });
+    if (!res.ok) {
+      console.warn(
+        `fetchViaJinaReader: ${targetUrl} returned HTTP ${res.status}`
+      );
+      return null;
+    }
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        total += value.length;
+        if (total >= maxBytes) {
+          await reader.cancel();
+          break;
+        }
+      }
+    }
+    const body = new TextDecoder("utf-8", { fatal: false })
+      .decode(Buffer.concat(chunks.map((c) => Buffer.from(c))))
+      .trim();
+
+    // Jina prefixes the response with a `Title:` + `URL Source:` +
+    // `Markdown Content:` header. Keep those — the extractor's
+    // Claude prompt benefits from the cue. Trim to the same 3000-char
+    // budget as the direct path.
+    const trimmed = body.slice(0, 3000);
+    if (trimmed.length < 80) {
+      console.warn(
+        `fetchViaJinaReader: ${targetUrl} returned too-thin content (${trimmed.length} chars)`
+      );
+      return null;
+    }
+    console.info(
+      `fetchViaJinaReader: ${targetUrl} OK, ${trimmed.length} chars extracted`
+    );
+    return trimmed;
+  } catch (err) {
     console.warn(
-      `fetchSiteSnapshot: ${canonicalUrl} snapshot too thin (${joined.length} chars) — returning null`
+      `fetchViaJinaReader: ${targetUrl} failed:`,
+      err instanceof Error ? err.message : err
     );
     return null;
   }
-  console.info(
-    `fetchSiteSnapshot: ${canonicalUrl} OK, ${joined.length} chars extracted`
-  );
-  return joined;
 }
 
 const EXTRACTION_SYSTEM = `You are an analyst that reads a brief website snapshot and returns a structured brand profile for ONE specific brand being tracked.

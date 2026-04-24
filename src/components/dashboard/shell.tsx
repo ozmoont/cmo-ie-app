@@ -15,6 +15,8 @@ import {
   Zap,
   Search,
   Globe,
+  Target,
+  Download,
 } from "lucide-react";
 
 interface DashboardShellProps {
@@ -35,6 +37,7 @@ function projectNav(id: string) {
     { label: "Overview", href: `/projects/${id}`, icon: BarChart3 },
     { label: "Insights", href: `/projects/${id}/insights`, icon: Search },
     { label: "Sources", href: `/projects/${id}/sources`, icon: Globe },
+    { label: "Gaps", href: `/projects/${id}/gaps`, icon: Target },
     { label: "Prompts", href: `/projects/${id}/prompts`, icon: MessageSquare },
     { label: "Competitors", href: `/projects/${id}/competitors`, icon: Users },
     { label: "Actions", href: `/projects/${id}/actions`, icon: Zap },
@@ -65,8 +68,8 @@ export function DashboardShell({
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Top bar */}
-      <header className="border-b border-border bg-surface sticky top-0 z-50">
+      {/* Top bar — hidden in print. */}
+      <header className="no-print border-b border-border bg-surface sticky top-0 z-50">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-6">
             <Link href="/dashboard">
@@ -95,6 +98,15 @@ export function DashboardShell({
             {mounted && userEmail && (
               <span className="hidden md:inline text-sm text-text-secondary">{userEmail}</span>
             )}
+            {plan === "agency" && (
+              <Link
+                href="/agency/dashboard"
+                className="hidden md:inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.1em] font-semibold text-emerald-dark hover:text-emerald-dark/80 transition-colors"
+              >
+                Agency
+              </Link>
+            )}
+            {projectId && <ShellPrintButton />}
             <Link href="/settings">
               <Button variant="ghost" size="icon">
                 <Settings className="h-4 w-4" />
@@ -169,7 +181,7 @@ function SubNav({
   }, [activeIndex]);
 
   return (
-    <nav className="border-b border-border bg-surface overflow-x-auto scroll-smooth">
+    <nav className="no-print border-b border-border bg-surface overflow-x-auto scroll-smooth">
       <div
         ref={containerRef}
         className="mx-auto flex max-w-7xl gap-1 px-4 md:px-6 flex-nowrap relative"
@@ -210,5 +222,34 @@ function SubNav({
         )}
       </div>
     </nav>
+  );
+}
+
+/**
+ * Top-bar "Download PDF" button.
+ *
+ * Behaviour: calls `window.print()` on the current page. The browser's
+ * native print dialog takes over; the user chooses "Save as PDF" and
+ * gets whatever page they were looking at (Actions / Gaps / Sources /
+ * etc.) rather than forcing them through the dedicated Overview
+ * report. The print stylesheet in globals.css + `.no-print` classes
+ * on the shell's header and SubNav produce a clean, single-column
+ * output.
+ *
+ * If the user wants the polished one-pager summary instead, the
+ * `/projects/[id]/report` URL is still reachable from the Overview
+ * page and prints with the same CSS.
+ */
+function ShellPrintButton() {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => window.print()}
+      aria-label="Download this page as PDF"
+      title="Download PDF"
+    >
+      <Download className="h-4 w-4" />
+    </Button>
   );
 }

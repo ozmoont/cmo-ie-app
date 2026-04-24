@@ -278,9 +278,63 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Prompt suggestion error:", error);
+    const mapped = mapAnthropicError(error);
     return NextResponse.json(
-      { error: "Failed to generate suggestions" },
-      { status: 500 }
+      { error: mapped.message, code: mapped.code },
+      { status: mapped.status }
     );
   }
+}
+
+/**
+ * Translate an Anthropic SDK error into a user-facing shape the UI
+ * can render without a stack trace. The SDK surfaces the underlying
+ * HTTP response as `error.error?.message`; we sniff for the
+ * well-known billing / rate-limit / auth phrases so the operator
+ * sees "Top up credits" instead of a generic 500.
+ */
+function mapAnthropicError(err: unknown): {
+  status: number;
+  code: string;
+  message: string;
+} {
+  // The SDK's APIError shape: { status, error: { error: { type, message } } }
+  const anyErr = err as {
+    status?: number;
+    error?: { error?: { type?: string; message?: string } };
+    message?: string;
+  };
+  const inner = anyErr.error?.error;
+  const text = (inner?.message ?? anyErr.message ?? "").toLowerCase();
+  const status = anyErr.status ?? 500;
+
+  if (text.includes("credit balance is too low")) {
+    return {
+      status: 402,
+      code: "anthropic_credits_exhausted",
+      message:
+        "Your Anthropic account is out of credits. Top up at console.anthropic.com/settings/billing and retry.",
+    };
+  }
+  if (status === 401 || text.includes("authentication")) {
+    return {
+      status: 401,
+      code: "anthropic_auth_failed",
+      message:
+        "Anthropic API key is missing or invalid. Check ANTHROPIC_API_KEY in your env or the org's BYOK key.",
+    };
+  }
+  if (status === 429 || text.includes("rate limit")) {
+    return {
+      status: 429,
+      code: "anthropic_rate_limited",
+      message:
+        "Anthropic rate limit hit. Retry in 30-60s; if it keeps happening, you're on a plan with low concurrent limits.",
+    };
+  }
+  return {
+    status: 500,
+    code: "suggestion_failed",
+    message: "Failed to generate suggestions. Check the server log.",
+  };
 }

@@ -26,6 +26,8 @@ const KNOWN_MODELS: ReadonlySet<AIModel> = new Set<AIModel>([
   "google_aio",
   "gemini",
   "claude",
+  "copilot",
+  "grok",
 ]);
 
 function parseDate(raw: string | null): Date | undefined {

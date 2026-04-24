@@ -443,35 +443,75 @@ export async function executeRun(
   const allResults: RunResult[] = [];
   let stepCount = 0;
 
+  // ── Per-task timeout + flattened fan-out ──────────────────────────
+  // Previously we ran prompts serially with models parallel-inside-
+  // prompt. With N prompts and no per-adapter timeout, a single stuck
+  // provider call stalled the whole run. We now:
+  //   1. Flatten (prompt × model) into one work queue.
+  //   2. Run up to RUN_CONCURRENCY tasks at a time (bound peak load on
+  //      Anthropic's shared key; other providers have independent
+  //      limits so the bound is Anthropic-driven).
+  //   3. Wrap each adapter.query() in a hard timeout so one slow call
+  //      can't block the run; it records an error result and moves on.
+  const RUN_CONCURRENCY = 8;
+  const ADAPTER_TIMEOUT_MS = 45_000;
+
+  const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<T>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `${label} exceeded ${Math.round(ms / 1000)}s timeout`
+              )
+            ),
+          ms
+        )
+      ),
+    ]);
+
+  type Task = { prompt: (typeof activePrompts)[number]; adapter: (typeof available)[number] };
+  const tasks: Task[] = [];
+  for (const prompt of activePrompts) {
+    for (const adapter of available) tasks.push({ prompt, adapter });
+  }
+
   try {
-    for (const prompt of activePrompts) {
+    // Announce the first prompt so the UI has context before any
+    // model_done events arrive.
+    if (activePrompts.length > 0) {
       emit({
         type: "prompt_start",
-        message: `Checking prompt: "${prompt.text.slice(0, 60)}..."`,
+        message: `Checking ${activePrompts.length} prompts across ${available.length} models...`,
         current: stepCount,
         total: totalSteps,
-        detail: { prompt: prompt.text },
+        detail: { prompt: activePrompts[0].text },
       });
+    }
 
-      // Run all adapters concurrently for this prompt. Each adapter hits
-      // a different provider so rate limits don't conflict; the only
-      // shared provider is Anthropic (used both as a model and for the
-      // analysis step), and its limits are generous enough to absorb
-      // ~4-5 concurrent requests per prompt. Prompts remain sequential
-      // to bound peak concurrency regardless of prompt count.
-      await Promise.all(
-        available.map(async (adapter) => {
-          const modelLabel = MODEL_LABELS[adapter.name] ?? adapter.name;
+    // Pool-style fan-out with bounded concurrency. Workers pull tasks
+    // from the queue until it's empty.
+    let nextIndex = 0;
+    const runTask = async ({ prompt, adapter }: Task) => {
+      const modelLabel = MODEL_LABELS[adapter.name] ?? adapter.name;
+      const startedAt = Date.now();
 
-          try {
-            // Step A — real provider call with web search. Pass the
-            // org's BYOK key when one exists for this model; otherwise
-            // the adapter falls back to the managed env-var key.
-            const modelResponse = await adapter.query(prompt.text, {
-              country: "IE", // TODO: per-prompt country once schema lands
-              marketContext: "Irish market",
-              apiKey: apiKeys[adapter.name],
-            });
+      try {
+        // Step A — real provider call with web search. Pass the
+        // org's BYOK key when one exists for this model; otherwise
+        // the adapter falls back to the managed env-var key.
+        const modelResponse = await withTimeout(
+          adapter.query(prompt.text, {
+            country: "IE", // TODO: per-prompt country once schema lands
+            marketContext: "Irish market",
+            apiKey: apiKeys[adapter.name],
+          }),
+          ADAPTER_TIMEOUT_MS,
+          `${modelLabel} on "${prompt.text.slice(0, 40)}..."`
+        );
+        void startedAt;
 
             // Step B — Deterministic brand matching using tracked_name +
             // aliases + regex. We no longer ask Claude to detect brands,
@@ -564,9 +604,17 @@ export async function executeRun(
               detail: { prompt: prompt.text, model: modelLabel },
             });
           }
-        })
-      );
-    }
+    };
+
+    // Worker pool: RUN_CONCURRENCY workers pull tasks from the queue.
+    const workers = Array.from({ length: Math.min(RUN_CONCURRENCY, tasks.length) }, async () => {
+      while (true) {
+        const i = nextIndex++;
+        if (i >= tasks.length) return;
+        await runTask(tasks[i]);
+      }
+    });
+    await Promise.all(workers);
 
     // Persist results + sources.
     emit({

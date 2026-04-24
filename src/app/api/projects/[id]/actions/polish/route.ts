@@ -31,7 +31,7 @@ export async function POST(
       );
     }
 
-    const { brief, draft, actionTitle, contactEmail, notes } =
+    const { brief, draft, actionTitle, contactEmail, notes, gap } =
       await request.json();
 
     if (!brief || !actionTitle || !contactEmail) {
@@ -39,6 +39,29 @@ export async function POST(
         { error: "brief, actionTitle, and contactEmail are required" },
         { status: 400 }
       );
+    }
+
+    // Defensive normalisation — if a gap object was passed, ensure it
+    // has the three required fields (scope / domain / captured_at) or
+    // drop it rather than persisting a half-formed shape.
+    let sourceGap: Record<string, unknown> | null = null;
+    if (gap && typeof gap === "object") {
+      const g = gap as Record<string, unknown>;
+      const scope = g.scope;
+      const domain = g.domain;
+      if (
+        (scope === "domain" || scope === "url") &&
+        typeof domain === "string" &&
+        domain.length > 0
+      ) {
+        sourceGap = {
+          ...g,
+          captured_at:
+            typeof g.captured_at === "string"
+              ? g.captured_at
+              : new Date().toISOString(),
+        };
+      }
     }
 
     // Insert polish request
@@ -53,6 +76,7 @@ export async function POST(
         contact_email: contactEmail,
         notes: notes || null,
         status: "pending",
+        source_gap: sourceGap,
       })
       .select()
       .single();

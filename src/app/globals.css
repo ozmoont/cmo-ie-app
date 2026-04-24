@@ -265,3 +265,53 @@ html:not([data-hydrated]) .stagger-children > *:nth-child(n+9) { animation-delay
     animation: none !important;
   }
 }
+
+/* ── Print styles ──
+   Used by the project report page (/projects/[id]/report) so the
+   browser's "Save as PDF" output is clean, single-column, and
+   brand-consistent. Anything with `.no-print` disappears on paper;
+   `.print-page-break` forces a page break before that element.
+   Keeping the ruleset minimal so future report variants inherit
+   sensibly without CSS-specificity fights. */
+@media print {
+  @page {
+    size: A4;
+    margin: 18mm 16mm 18mm 16mm;
+  }
+
+  body {
+    background: white !important;
+    color: #111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+
+  .print-page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .print-avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Ensure links show their URL on paper. */
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #555;
+    word-break: break-all;
+  }
+
+  /* Hide in-app link decoration that loses its hover state in print. */
+  a[href^="/"]::after {
+    content: "";
+  }
+}
+

@@ -22,6 +22,8 @@ import {
 } from "@/lib/classifiers/types";
 import { Badge } from "@/components/ui/badge";
 import { SourceTypeChart } from "@/components/dashboard/source-type-chart";
+import { CsvExportButton } from "@/components/dashboard/csv-export-button";
+import { toCsv, csvFilenameStamp } from "@/lib/csv";
 import { AlertTriangle, Globe } from "lucide-react";
 
 interface PageProps {
@@ -154,6 +156,27 @@ export default async function SourcesDomainsPage({
 
       {/* ── Domains table ── */}
       <section className="py-10">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs text-text-muted">
+            Top {result.domains.length} domains
+            {sourceTypeFilter ? ` · filter: ${sourceTypeFilter}` : ""}
+          </p>
+          <CsvExportButton
+            csv={toCsv(result.domains, [
+              { header: "Domain", get: (d) => d.domain },
+              { header: "Source type", get: (d) => d.source_type ?? "unclassified" },
+              { header: "Retrieved %", get: (d) => d.retrieved_pct },
+              { header: "Retrieval rate", get: (d) => d.retrieval_rate },
+              { header: "Citation rate", get: (d) => d.citation_rate },
+              { header: "Total citations", get: (d) => d.total_citations },
+              { header: "Inline citations", get: (d) => d.inline_citations },
+              { header: "Chats appearing", get: (d) => d.chats_appearing },
+              { header: "Brand domain", get: (d) => d.is_brand_domain },
+              { header: "Competitor domain", get: (d) => d.is_competitor_domain },
+            ])}
+            filename={`${project.brand_name.toLowerCase().replace(/\W+/g, "-")}-sources-domains-${csvFilenameStamp()}`}
+          />
+        </div>
         {result.domains.length === 0 ? (
           <div className="py-16 text-center text-sm text-text-secondary max-w-md mx-auto">
             {sourceTypeFilter
@@ -184,9 +207,12 @@ export default async function SourcesDomainsPage({
                     className="border-b border-border last:border-b-0 hover:bg-surface-hover transition-colors"
                   >
                     <td className="py-3 px-4 md:px-0 md:pr-4">
-                      <div className="flex items-center gap-2 min-w-0">
+                      <Link
+                        href={`/projects/${projectId}/sources/urls?domain=${encodeURIComponent(d.domain)}`}
+                        className="flex items-center gap-2 min-w-0 group"
+                      >
                         <Globe className="h-3.5 w-3.5 text-text-muted shrink-0" />
-                        <span className="text-text-primary truncate">
+                        <span className="text-text-primary truncate group-hover:underline">
                           {d.domain}
                         </span>
                         {d.is_brand_domain && (
@@ -199,7 +225,7 @@ export default async function SourcesDomainsPage({
                             competitor
                           </Badge>
                         )}
-                      </div>
+                      </Link>
                     </td>
                     <td className="py-3 pr-4">
                       {d.source_type ? (

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/monthly-playbooks",
+      "schedule": "0 9 1 * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/projects/[id]/actions/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/projects/[id]/runs/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/prompts/suggest/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/cron/monthly-playbooks/route.ts": {
+      "maxDuration": 300
+    }
+  }
+}

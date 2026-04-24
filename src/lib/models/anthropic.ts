@@ -125,57 +125,13 @@ export const anthropicAdapter: ModelAdapter = {
       );
 
       // Collapse the structured content blocks into a plain text response
-      // and extract citations from web_search_tool_result blocks.
-      const textParts: string[] = [];
-      const sources: ModelSource[] = [];
-      const seen = new Set<string>();
-
-      for (const block of message.content) {
-        if (block.type === "text") {
-          textParts.push(block.text);
-          // Inline citations hang off each text block as block.citations
-          const citations = (block as unknown as { citations?: Array<{ url?: string; title?: string }> }).citations;
-          if (Array.isArray(citations)) {
-            for (const c of citations) {
-              if (c.url && !seen.has(c.url)) {
-                seen.add(c.url);
-                sources.push({
-                  url: c.url,
-                  domain: domainFromUrl(c.url),
-                  title: c.title,
-                  cited_inline: true,
-                  position: sources.length + 1,
-                });
-              }
-            }
-          }
-        } else if (block.type === "web_search_tool_result") {
-          // Tool results list every URL Claude retrieved — the "sources
-          // sidebar" equivalent. Any URL already added from an inline
-          // citation stays marked cited_inline; additional ones here are
-          // retrieved-but-not-cited.
-          const results = (block as unknown as {
-            content?: Array<{ url?: string; title?: string }>;
-          }).content;
-          if (Array.isArray(results)) {
-            for (const r of results) {
-              if (r.url && !seen.has(r.url)) {
-                seen.add(r.url);
-                sources.push({
-                  url: r.url,
-                  domain: domainFromUrl(r.url),
-                  title: r.title,
-                  cited_inline: false,
-                  position: sources.length + 1,
-                });
-              }
-            }
-          }
-        }
-      }
+      // and extract citations. Parsing is extracted to
+      // `parseAnthropicContent` so we can unit-test it against fixtures
+      // of real Claude responses without a live API call.
+      const { text, sources } = parseAnthropicContent(message.content);
 
       return {
-        text: textParts.join("\n").trim(),
+        text,
         sources,
         model_version: message.model,
       };
@@ -188,3 +144,93 @@ export const anthropicAdapter: ModelAdapter = {
     }
   },
 };
+
+// ── Pure parser (exported for tests) ────────────────────────────────
+// Takes Claude's structured content-block array and produces:
+//   - `text`: every text block joined with newlines, trimmed.
+//   - `sources`: URLs extracted in order, each tagged `cited_inline` if
+//     it appeared in a text block's `citations`, `false` if it appeared
+//     only in a `web_search_tool_result` (sidebar-only retrieval).
+//
+// Keep this pure: no network, no SDK types, just shape-narrowing on
+// `unknown[]`. That way our fixtures can be hand-written JSON blobs
+// and the tests stay stable across SDK version bumps.
+type AnthropicContentBlock =
+  | {
+      type: "text";
+      text: string;
+      citations?: Array<{ url?: string; title?: string }>;
+    }
+  | {
+      type: "web_search_tool_result";
+      content?: Array<{ url?: string; title?: string }>;
+    }
+  | { type: string };
+
+export function parseAnthropicContent(
+  content: unknown
+): { text: string; sources: ModelSource[] } {
+  if (!Array.isArray(content)) {
+    return { text: "", sources: [] };
+  }
+
+  // Two-pass walk so inline citations always beat tool-result sidebar
+  // URLs. Claude often emits tool_result BEFORE the text block that
+  // cites it (tool_use → tool_result → text), so a single-pass walk
+  // would mis-tag cited URLs as sidebar-only.
+  const textParts: string[] = [];
+  const sources: ModelSource[] = [];
+  const seen = new Set<string>();
+
+  // Pass 1: text blocks. Collect text + inline-cited URLs.
+  for (const raw of content) {
+    const block = raw as AnthropicContentBlock;
+    if (block.type !== "text") continue;
+    const b = block as Extract<AnthropicContentBlock, { type: "text" }>;
+    if (typeof b.text === "string") textParts.push(b.text);
+    if (Array.isArray(b.citations)) {
+      for (const c of b.citations) {
+        if (c?.url && !seen.has(c.url)) {
+          seen.add(c.url);
+          sources.push({
+            url: c.url,
+            domain: domainFromUrl(c.url),
+            title: c.title,
+            cited_inline: true,
+            position: sources.length + 1,
+          });
+        }
+      }
+    }
+  }
+
+  // Pass 2: web_search_tool_result blocks. Add any remaining URLs as
+  // cited_inline: false (sidebar-only / retrieved but not cited).
+  for (const raw of content) {
+    const block = raw as AnthropicContentBlock;
+    if (block.type !== "web_search_tool_result") continue;
+    const b = block as Extract<
+      AnthropicContentBlock,
+      { type: "web_search_tool_result" }
+    >;
+    if (!Array.isArray(b.content)) continue;
+    for (const r of b.content) {
+      if (r?.url && !seen.has(r.url)) {
+        seen.add(r.url);
+        sources.push({
+          url: r.url,
+          domain: domainFromUrl(r.url),
+          title: r.title,
+          cited_inline: false,
+          position: sources.length + 1,
+        });
+      }
+    }
+  }
+  // Other block types (tool_use, thinking, etc.) ignored — no sources.
+
+  return {
+    text: textParts.join("\n").trim(),
+    sources,
+  };
+}

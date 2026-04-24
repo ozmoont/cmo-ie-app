@@ -70,47 +70,81 @@ export function classifyDelta(delta: number): ProjectState {
 
 /**
  * Summarises a visibility score with the same tiered copy used on
- * the dashboard ("Strong / Moderate / Low / Not visible"). Returns
- * a one-line interpretation suitable for the hero metric.
+ * the dashboard ("Strong / Moderate / Low / Not visible").
  *
- * The interpretation is intentionally second-person and prescriptive
- * so the user always knows what to do next.
+ * Passing the optional `ctx` object injects the actual numbers into
+ * the body copy — the difference between "AI models mention you
+ * sometimes" (generic) and "Mentioned in 4 of 15 checks — Claude
+ * saw you, ChatGPT and Perplexity didn't" (specific, actionable).
+ * Callers that don't have those numbers handy still get the
+ * generic phrasing.
  */
 export function summariseScore(
   score: number,
-  brandName: string
+  brandName: string,
+  ctx?: {
+    total?: number;
+    mentioned?: number;
+    /** Models that mentioned the brand at least once in the window. Used for the "Claude saw you, X didn't" line. */
+    mentionedModels?: string[];
+    /** Models that returned results but never mentioned the brand. */
+    missedModels?: string[];
+  }
 ): { label: string; body: string } {
+  const stats = buildStatsPhrase(brandName, ctx);
+  const models = buildModelSplitPhrase(ctx?.mentionedModels, ctx?.missedModels);
   if (score >= 60) {
     return {
       label: "Strong",
-      body: `${brandName} appears in most AI conversations. Focus on maintaining position and improving sentiment.`,
+      body: joinSentences(
+        stats,
+        models,
+        `Focus on holding ${brandName}'s lead — improve sentiment and capture more prompt surface area.`
+      ),
     };
   }
   if (score >= 30) {
     return {
       label: "Moderate",
-      body: `AI models mention ${brandName} sometimes, but not consistently. Check which prompts are missing you and target those gaps.`,
+      body: joinSentences(
+        stats,
+        models,
+        `Target the prompts that are missing ${brandName} next — those gaps are your fastest path up.`
+      ),
     };
   }
   if (score > 0) {
     return {
       label: "Low",
-      body: `Most AI models aren't recommending ${brandName}. Go to Actions to see what content to create to get cited.`,
+      body: joinSentences(
+        stats,
+        models,
+        `Head to Actions for specific content briefs that get AI to cite ${brandName}.`
+      ),
     };
   }
   return {
     label: "Not visible",
-    body: `AI models don't mention ${brandName} yet. There isn't enough online content about your brand for AI to reference. Start with the Action Plan.`,
+    body: joinSentences(
+      stats,
+      models,
+      `AI has no signal for ${brandName} in your category. Start with the Action Plan.`
+    ),
   };
 }
 
 /**
  * Same shape as summariseScore, applied to average mention position.
  * `position` is an already-rounded decimal as a string ("1.6") or "-".
+ *
+ * Passing `ctx.mentionedCount` + `ctx.totalModels` rewrites the body
+ * to name the number of mentions directly instead of the bland
+ * "you're mentioned but not first".
  */
 export function summarisePosition(
   position: string,
-  brandName: string
+  brandName: string,
+  ctx?: { mentionedCount?: number; totalModels?: number }
 ): { label: string; body: string } {
   if (position === "-") {
     return {
@@ -119,21 +153,35 @@ export function summarisePosition(
     };
   }
   const n = parseFloat(position);
+  const positionClause = `Average position #${n.toFixed(1)}${
+    ctx?.mentionedCount !== undefined
+      ? ` across ${ctx.mentionedCount} mention${ctx.mentionedCount === 1 ? "" : "s"}`
+      : ""
+  }.`;
   if (n <= 2) {
     return {
       label: "Top of the list",
-      body: `You're one of the first brands mentioned. AI models see ${brandName} as a top recommendation.`,
+      body: joinSentences(
+        positionClause,
+        `AI models treat ${brandName} as a top recommendation — defend this by publishing category-defining content.`
+      ),
     };
   }
   if (n <= 4) {
     return {
       label: "Mid-pack",
-      body: `You're mentioned but not first. To move up, ensure your site has clear, structured content that directly answers customer questions.`,
+      body: joinSentences(
+        positionClause,
+        `You're mentioned but not first. Clearer, structured content answering customer questions directly moves the needle fastest.`
+      ),
     };
   }
   return {
     label: "Buried",
-    body: `You're mentioned late in responses. AI models know you exist but prefer competitors. Check Sources to see who they cite instead.`,
+    body: joinSentences(
+      positionClause,
+      `AI knows ${brandName} exists but prefers competitors. Check Sources to see who it cites instead.`
+    ),
   };
 }
 
@@ -211,12 +259,18 @@ export function summariseShareOfVoice(
 }
 
 /**
- * Sentiment score summary - parallels the two above.
+ * Sentiment score summary — parallels the two above.
+ *
+ * When `distribution` is passed (positive/neutral/negative counts),
+ * the body calls out the split explicitly — "9 positive · 2 neutral
+ * · 1 negative" — which is materially more useful than "AI speaks
+ * well of you".
  */
 export function summariseSentiment(
   score: number | null,
   totalMentions: number,
-  brandName: string
+  brandName: string,
+  distribution?: { positive: number; neutral: number; negative: number }
 ): { label: string; body: string } {
   if (totalMentions === 0 || score === null) {
     return {
@@ -224,20 +278,73 @@ export function summariseSentiment(
       body: `Once AI models mention ${brandName}, we'll track whether they recommend you positively, neutrally, or critically.`,
     };
   }
+  const split = distribution
+    ? `${distribution.positive} positive · ${distribution.neutral} neutral · ${distribution.negative} negative across ${totalMentions} mention${totalMentions === 1 ? "" : "s"}.`
+    : null;
   if (score >= 60) {
     return {
       label: "Positive",
-      body: `AI models speak well of ${brandName}. Keep publishing case studies, reviews, and success stories to maintain this.`,
+      body: joinSentences(
+        split,
+        `AI speaks well of ${brandName}. Keep publishing case studies, reviews, and independent proof to hold this.`
+      ),
     };
   }
   if (score >= 40) {
     return {
       label: "Mixed",
-      body: `Some mentions are positive, others neutral. Add testimonials, awards, and proof points to strengthen your brand signal.`,
+      body: joinSentences(
+        split,
+        `Some mentions land positive, others neutral. Testimonials, awards, and sharper proof points strengthen the signal.`
+      ),
     };
   }
   return {
     label: "Needs attention",
-    body: `AI models are describing ${brandName} critically. Check the Recent AI Responses below to see exactly what's being said and address it.`,
+    body: joinSentences(
+      split,
+      `AI describes ${brandName} critically. Open Recent AI Responses to see exactly what's being said — and address the specific claims.`
+    ),
   };
+}
+
+// ── Helpers (used by the summarisers above) ─────────────────────────
+
+function buildStatsPhrase(
+  brandName: string,
+  ctx?: { total?: number; mentioned?: number }
+): string | null {
+  if (!ctx || ctx.total === undefined || ctx.total === 0) return null;
+  const mentioned = ctx.mentioned ?? 0;
+  const pct = Math.round((mentioned / ctx.total) * 100);
+  return `${brandName} was mentioned in ${mentioned} of ${ctx.total} checks (${pct}%).`;
+}
+
+function buildModelSplitPhrase(
+  mentionedModels?: string[],
+  missedModels?: string[]
+): string | null {
+  const mentioned = (mentionedModels ?? []).filter(Boolean);
+  const missed = (missedModels ?? []).filter(Boolean);
+  if (mentioned.length === 0 && missed.length === 0) return null;
+  if (mentioned.length > 0 && missed.length === 0) {
+    return `${joinList(mentioned)} saw you.`;
+  }
+  if (mentioned.length === 0 && missed.length > 0) {
+    return `${joinList(missed)} didn't mention you.`;
+  }
+  return `${joinList(mentioned)} saw you, ${joinList(missed)} didn't.`;
+}
+
+function joinList(items: string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function joinSentences(
+  ...parts: Array<string | null | undefined>
+): string {
+  return parts.filter(Boolean).join(" ");
 }

@@ -416,8 +416,11 @@ export default function PromptsPage() {
                   key={prompt.id}
                   className="flex items-center justify-between gap-4 py-3.5 group"
                 >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <p className="text-sm text-text-primary truncate">
+                  <Link
+                    href={`/projects/${projectId}/prompts/${prompt.id}`}
+                    className="flex items-center gap-3 flex-1 min-w-0 hover:text-emerald-dark transition-colors"
+                  >
+                    <p className="text-sm text-text-primary truncate group-hover:underline">
                       {prompt.text}
                     </p>
                     <Badge
@@ -427,7 +430,7 @@ export default function PromptsPage() {
                       {CATEGORY_LABELS[prompt.category as PromptCategory] ??
                         prompt.category}
                     </Badge>
-                  </div>
+                  </Link>
                   <Button
                     variant="ghost"
                     size="icon"

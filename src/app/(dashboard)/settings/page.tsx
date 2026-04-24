@@ -7,7 +7,8 @@ import { PricingCards } from "@/components/dashboard/pricing-cards";
 import { CreditsBadge } from "@/components/dashboard/credits-badge";
 import { DeleteAccountButton } from "@/components/dashboard/delete-account-button";
 import { TeamSection } from "@/components/dashboard/team-section";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ArrowRight, KeyRound, Mail, Users2 } from "lucide-react";
+import Link from "next/link";
 
 export const metadata = {
   title: "Settings",
@@ -240,6 +241,79 @@ export default async function SettingsPage() {
         </div>
         <div className="col-span-12 md:col-span-9 max-w-3xl">
           <TeamSection />
+        </div>
+      </section>
+
+      {/* ── Integrations ── */}
+      <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 md:py-14 border-b border-border">
+        <div className="col-span-12 md:col-span-3 space-y-2">
+          <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block w-4 h-[2px] bg-emerald-dark"
+            />
+            Integrations
+          </p>
+          <p className="text-sm text-text-secondary leading-relaxed">
+            Pull your CMO.ie data into other tools.
+          </p>
+        </div>
+        <div className="col-span-12 md:col-span-9 max-w-2xl space-y-3">
+          <Link
+            href="/settings/api-keys"
+            className="group flex items-start gap-4 border border-border rounded-lg p-5 hover:border-emerald-dark/60 transition-colors"
+          >
+            <KeyRound className="h-5 w-5 text-emerald-dark shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-base font-semibold text-text-primary group-hover:text-emerald-dark transition-colors">
+                REST API keys
+              </p>
+              <p className="mt-1 text-sm text-text-secondary leading-relaxed">
+                Mint scoped tokens for the public REST API and MCP server.
+                Feeds Sheets / Looker integrations and lets Claude query
+                your visibility data directly. See{" "}
+                <span className="underline">docs/api</span> for the
+                reference.
+              </p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
+          </Link>
+          {planName === "agency" && (
+            <Link
+              href="/agency/billing"
+              className="group flex items-start gap-4 border border-border rounded-lg p-5 hover:border-emerald-dark/60 transition-colors"
+            >
+              <Users2 className="h-5 w-5 text-emerald-dark shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-base font-semibold text-text-primary group-hover:text-emerald-dark transition-colors">
+                  Agency allocations
+                </p>
+                <p className="mt-1 text-sm text-text-secondary leading-relaxed">
+                  Cap each client project&apos;s share of your monthly brief
+                  pool. Uncapped projects draw freely; capped projects stop
+                  at their limit before dipping into the rest of the pool.
+                </p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
+            </Link>
+          )}
+          <Link
+            href="/admin/playbooks"
+            className="group flex items-start gap-4 border border-border rounded-lg p-5 hover:border-emerald-dark/60 transition-colors"
+          >
+            <Mail className="h-5 w-5 text-emerald-dark shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-base font-semibold text-text-primary group-hover:text-emerald-dark transition-colors">
+                Monthly playbook emails
+              </p>
+              <p className="mt-1 text-sm text-text-secondary leading-relaxed">
+                Auto-generated &ldquo;your three moves this month&rdquo;
+                emails. Preview what&apos;s queued and force-regenerate
+                before the 1st-of-month cron fires.
+              </p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
+          </Link>
         </div>
       </section>
 

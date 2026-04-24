@@ -1,0 +1,506 @@
+[
+  {
+    "domain": "rte.ie",
+    "name": "RTÉ",
+    "source_type": "editorial",
+    "sectors": ["general", "news", "tech", "business"],
+    "notes": "National public service broadcaster; high authority across every vertical.",
+    "weight": 1.4
+  },
+  {
+    "domain": "irishtimes.com",
+    "name": "The Irish Times",
+    "source_type": "editorial",
+    "sectors": ["general", "news", "business", "law", "tech", "food-bev"],
+    "notes": "Paper of record; strong sections for business, tech, legal.",
+    "weight": 1.4
+  },
+  {
+    "domain": "independent.ie",
+    "name": "Irish Independent",
+    "source_type": "editorial",
+    "sectors": ["general", "news", "business", "property", "food-bev"],
+    "notes": "Largest national newspaper circulation; reach-heavy for consumer brands.",
+    "weight": 1.3
+  },
+  {
+    "domain": "thejournal.ie",
+    "name": "TheJournal.ie",
+    "source_type": "editorial",
+    "sectors": ["general", "news", "consumer"],
+    "notes": "Digital-native news; high engagement, younger audience.",
+    "weight": 1.2
+  },
+  {
+    "domain": "irishexaminer.com",
+    "name": "Irish Examiner",
+    "source_type": "editorial",
+    "sectors": ["general", "news", "food-bev", "agri"],
+    "notes": "Cork-based national daily; strong in Munster + agri/food.",
+    "weight": 1.2
+  },
+  {
+    "domain": "breakingnews.ie",
+    "name": "BreakingNews.ie",
+    "source_type": "editorial",
+    "sectors": ["general", "news"],
+    "notes": "Examiner-owned rapid-news outlet; good for syndication.",
+    "weight": 1.1
+  },
+  {
+    "domain": "businesspost.ie",
+    "name": "The Business Post",
+    "source_type": "editorial",
+    "sectors": ["business", "tech", "finance", "property"],
+    "notes": "Sunday business/finance paper of record in Ireland.",
+    "weight": 1.4
+  },
+  {
+    "domain": "businessplus.ie",
+    "name": "Business Plus",
+    "source_type": "editorial",
+    "sectors": ["business", "tech", "sme"],
+    "notes": "Mid-market business trade press; tech company profile features.",
+    "weight": 1.3
+  },
+  {
+    "domain": "siliconrepublic.com",
+    "name": "Silicon Republic",
+    "source_type": "editorial",
+    "sectors": ["tech", "startups", "digital-marketing"],
+    "notes": "Irish tech trade press; heavy emphasis on startups + scaleups.",
+    "weight": 1.4
+  },
+  {
+    "domain": "techcentral.ie",
+    "name": "TechCentral.ie",
+    "source_type": "editorial",
+    "sectors": ["tech", "enterprise-it"],
+    "notes": "Enterprise-IT focus; CIO/CTO readership.",
+    "weight": 1.2
+  },
+  {
+    "domain": "thinkbusiness.ie",
+    "name": "ThinkBusiness",
+    "source_type": "editorial",
+    "sectors": ["business", "tech", "sme"],
+    "notes": "SME-focused; covers scaling stories, fintech, regional business.",
+    "weight": 1.2
+  },
+  {
+    "domain": "checkout.ie",
+    "name": "Checkout",
+    "source_type": "editorial",
+    "sectors": ["food-bev", "retail"],
+    "notes": "Grocery + retail trade press; brand launches, shopper trends.",
+    "weight": 1.3
+  },
+  {
+    "domain": "shelflife.ie",
+    "name": "ShelfLife",
+    "source_type": "editorial",
+    "sectors": ["food-bev", "retail", "convenience"],
+    "notes": "Convenience + forecourt retail trade press.",
+    "weight": 1.1
+  },
+  {
+    "domain": "hospitalityireland.com",
+    "name": "Hospitality Ireland",
+    "source_type": "editorial",
+    "sectors": ["hospitality", "food-bev"],
+    "notes": "Hotels / restaurants / bars trade press.",
+    "weight": 1.3
+  },
+  {
+    "domain": "hoteliermagazine.ie",
+    "name": "Hotelier",
+    "source_type": "editorial",
+    "sectors": ["hospitality", "tourism"],
+    "notes": "Hotel-industry trade title.",
+    "weight": 1.1
+  },
+  {
+    "domain": "licensingworld.ie",
+    "name": "Licensing World",
+    "source_type": "editorial",
+    "sectors": ["hospitality", "food-bev", "drinks"],
+    "notes": "Irish drinks trade press.",
+    "weight": 1.1
+  },
+  {
+    "domain": "failteireland.ie",
+    "name": "Fáilte Ireland",
+    "source_type": "corporate",
+    "sectors": ["tourism", "hospitality"],
+    "notes": "State tourism authority — listings, programs, operator supports.",
+    "weight": 1.4
+  },
+  {
+    "domain": "tourismireland.com",
+    "name": "Tourism Ireland",
+    "source_type": "corporate",
+    "sectors": ["tourism"],
+    "notes": "Global marketer of Ireland abroad; inbound tourism.",
+    "weight": 1.2
+  },
+  {
+    "domain": "irelandbeforeyoudie.com",
+    "name": "Ireland Before You Die",
+    "source_type": "editorial",
+    "sectors": ["tourism", "consumer", "travel"],
+    "notes": "High-traffic travel blog; strong for tourism-aligned brands.",
+    "weight": 1.2
+  },
+  {
+    "domain": "independent.ie/life/travel",
+    "name": "Independent.ie Travel",
+    "source_type": "editorial",
+    "sectors": ["tourism", "travel"],
+    "notes": "Large-audience travel vertical.",
+    "weight": 1.1
+  },
+  {
+    "domain": "constructionireland.ie",
+    "name": "Construction Ireland",
+    "source_type": "editorial",
+    "sectors": ["construction"],
+    "notes": "Construction trade press.",
+    "weight": 1.2
+  },
+  {
+    "domain": "constructionnetworkireland.ie",
+    "name": "Construction Network Ireland",
+    "source_type": "editorial",
+    "sectors": ["construction"],
+    "notes": "Trade directory + news hybrid.",
+    "weight": 1.1
+  },
+  {
+    "domain": "cif.ie",
+    "name": "Construction Industry Federation",
+    "source_type": "corporate",
+    "sectors": ["construction"],
+    "notes": "Industry body — guidance, member listings, policy.",
+    "weight": 1.3
+  },
+  {
+    "domain": "engineersjournal.ie",
+    "name": "Engineers Journal",
+    "source_type": "editorial",
+    "sectors": ["construction", "engineering"],
+    "notes": "Engineers Ireland member publication.",
+    "weight": 1.1
+  },
+  {
+    "domain": "engineersireland.ie",
+    "name": "Engineers Ireland",
+    "source_type": "corporate",
+    "sectors": ["construction", "engineering"],
+    "notes": "Professional body — registers, CPD, thought leadership.",
+    "weight": 1.2
+  },
+  {
+    "domain": "lawsociety.ie",
+    "name": "Law Society of Ireland",
+    "source_type": "corporate",
+    "sectors": ["law"],
+    "notes": "Solicitor regulator; directory of member firms.",
+    "weight": 1.4
+  },
+  {
+    "domain": "barcouncil.ie",
+    "name": "The Bar of Ireland",
+    "source_type": "corporate",
+    "sectors": ["law"],
+    "notes": "Barrister regulator + directory.",
+    "weight": 1.3
+  },
+  {
+    "domain": "gazette.ie",
+    "name": "Law Society Gazette",
+    "source_type": "editorial",
+    "sectors": ["law"],
+    "notes": "Legal-profession trade journal.",
+    "weight": 1.2
+  },
+  {
+    "domain": "lexology.com",
+    "name": "Lexology",
+    "source_type": "editorial",
+    "sectors": ["law"],
+    "notes": "International legal-content platform; Irish firms publish here.",
+    "weight": 1.0
+  },
+  {
+    "domain": "mondaq.com",
+    "name": "Mondaq",
+    "source_type": "editorial",
+    "sectors": ["law"],
+    "notes": "Legal articles + thought-leadership hub.",
+    "weight": 1.0
+  },
+  {
+    "domain": "marketing.ie",
+    "name": "Marketing.ie",
+    "source_type": "editorial",
+    "sectors": ["marketing", "advertising"],
+    "notes": "Irish marketing industry trade press.",
+    "weight": 1.3
+  },
+  {
+    "domain": "adworld.ie",
+    "name": "AdWorld.ie",
+    "source_type": "editorial",
+    "sectors": ["marketing", "advertising", "digital"],
+    "notes": "Ad industry news + awards; agency business stories.",
+    "weight": 1.2
+  },
+  {
+    "domain": "iapi.ie",
+    "name": "Institute of Advertising Practitioners in Ireland",
+    "source_type": "corporate",
+    "sectors": ["marketing", "advertising"],
+    "notes": "Industry body for Irish ad agencies.",
+    "weight": 1.1
+  },
+  {
+    "domain": "digitalmarketinginstitute.com",
+    "name": "Digital Marketing Institute",
+    "source_type": "editorial",
+    "sectors": ["marketing", "digital"],
+    "notes": "Dublin-based training + content.",
+    "weight": 1.0
+  },
+  {
+    "domain": "enterprise-ireland.com",
+    "name": "Enterprise Ireland",
+    "source_type": "corporate",
+    "sectors": ["business", "tech", "startups", "food-bev"],
+    "notes": "State agency supporting Irish-owned exporters.",
+    "weight": 1.3
+  },
+  {
+    "domain": "idaireland.com",
+    "name": "IDA Ireland",
+    "source_type": "corporate",
+    "sectors": ["business", "tech", "foreign-investment"],
+    "notes": "Foreign-direct-investment agency; high-authority for multinational narrative.",
+    "weight": 1.2
+  },
+  {
+    "domain": "bordbia.ie",
+    "name": "Bord Bia",
+    "source_type": "corporate",
+    "sectors": ["food-bev", "agri", "export"],
+    "notes": "Irish food board — market research, export supports.",
+    "weight": 1.3
+  },
+  {
+    "domain": "bordgaisenergy.ie",
+    "name": "Bord Gáis Energy",
+    "source_type": "corporate",
+    "sectors": ["energy", "consumer"],
+    "notes": "Utility; large consumer audience via content/sponsorships.",
+    "weight": 1.0
+  },
+  {
+    "domain": "dublinchamber.ie",
+    "name": "Dublin Chamber",
+    "source_type": "corporate",
+    "sectors": ["business", "sme"],
+    "notes": "Dublin-region chamber of commerce.",
+    "weight": 1.0
+  },
+  {
+    "domain": "chambers.ie",
+    "name": "Chambers Ireland",
+    "source_type": "corporate",
+    "sectors": ["business", "sme"],
+    "notes": "National chamber network.",
+    "weight": 1.0
+  },
+  {
+    "domain": "sbpost.ie",
+    "name": "Sunday Business Post (archive)",
+    "source_type": "editorial",
+    "sectors": ["business", "finance"],
+    "notes": "Legacy archive, still frequently cited.",
+    "weight": 0.9
+  },
+  {
+    "domain": "fora.ie",
+    "name": "Fora",
+    "source_type": "editorial",
+    "sectors": ["business", "startups", "tech"],
+    "notes": "Irish business / entrepreneurship vertical (Journal Media).",
+    "weight": 1.2
+  },
+  {
+    "domain": "techireland.org",
+    "name": "Tech Ireland",
+    "source_type": "reference",
+    "sectors": ["tech", "startups"],
+    "notes": "Open-data directory of Irish tech companies.",
+    "weight": 1.2
+  },
+  {
+    "domain": "startupireland.ie",
+    "name": "Startup Ireland",
+    "source_type": "corporate",
+    "sectors": ["startups", "tech"],
+    "notes": "National startup ecosystem body.",
+    "weight": 1.0
+  },
+  {
+    "domain": "trinitynews.ie",
+    "name": "Trinity News",
+    "source_type": "editorial",
+    "sectors": ["education", "general"],
+    "notes": "Trinity College Dublin student paper; reach for youth brands.",
+    "weight": 0.8
+  },
+  {
+    "domain": "universitytimes.ie",
+    "name": "The University Times",
+    "source_type": "editorial",
+    "sectors": ["education"],
+    "notes": "TCD student journalism.",
+    "weight": 0.8
+  },
+  {
+    "domain": "lovindublin.com",
+    "name": "Lovin Dublin",
+    "source_type": "editorial",
+    "sectors": ["consumer", "food-bev", "lifestyle"],
+    "notes": "Dublin lifestyle + food discovery; strong social reach.",
+    "weight": 1.1
+  },
+  {
+    "domain": "image.ie",
+    "name": "IMAGE",
+    "source_type": "editorial",
+    "sectors": ["consumer", "lifestyle", "food-bev", "hospitality"],
+    "notes": "Lifestyle magazine; higher-income consumer brands.",
+    "weight": 1.1
+  },
+  {
+    "domain": "evoke.ie",
+    "name": "EVOKE",
+    "source_type": "editorial",
+    "sectors": ["consumer", "lifestyle", "entertainment"],
+    "notes": "DMG-owned consumer lifestyle.",
+    "weight": 1.0
+  },
+  {
+    "domain": "irishcentral.com",
+    "name": "Irish Central",
+    "source_type": "editorial",
+    "sectors": ["tourism", "diaspora", "culture"],
+    "notes": "Irish-American diaspora audience; good for tourism brands.",
+    "weight": 1.1
+  },
+  {
+    "domain": "agriland.ie",
+    "name": "Agriland",
+    "source_type": "editorial",
+    "sectors": ["agri", "food-bev"],
+    "notes": "Agriculture trade press.",
+    "weight": 1.2
+  },
+  {
+    "domain": "irishfarmersjournal.com",
+    "name": "Irish Farmers Journal",
+    "source_type": "editorial",
+    "sectors": ["agri", "food-bev"],
+    "notes": "Weekly farming newspaper; authoritative agri voice.",
+    "weight": 1.3
+  },
+  {
+    "domain": "bord-bia.ie",
+    "name": "Bord Bia (alt domain)",
+    "source_type": "corporate",
+    "sectors": ["food-bev", "agri"],
+    "notes": "Alt-spelling fallback for Bord Bia.",
+    "weight": 1.3
+  },
+  {
+    "domain": "thewildlarder.ie",
+    "name": "The Wild Larder",
+    "source_type": "ugc",
+    "sectors": ["food-bev", "consumer"],
+    "notes": "Small-scale food discovery community.",
+    "weight": 0.8
+  },
+  {
+    "domain": "reddit.com/r/ireland",
+    "name": "r/Ireland",
+    "source_type": "ugc",
+    "sectors": ["general", "consumer", "news"],
+    "notes": "Largest Irish Reddit community; AI citations common.",
+    "weight": 1.1
+  },
+  {
+    "domain": "reddit.com/r/dublin",
+    "name": "r/Dublin",
+    "source_type": "ugc",
+    "sectors": ["consumer", "food-bev", "hospitality", "lifestyle"],
+    "notes": "Dublin-focused community; recommendations threads frequently cited.",
+    "weight": 1.1
+  },
+  {
+    "domain": "boards.ie",
+    "name": "Boards.ie",
+    "source_type": "ugc",
+    "sectors": ["general", "consumer"],
+    "notes": "Long-running Irish discussion forum; high SERP presence.",
+    "weight": 1.2
+  },
+  {
+    "domain": "askaboutmoney.com",
+    "name": "Askaboutmoney",
+    "source_type": "ugc",
+    "sectors": ["finance", "consumer"],
+    "notes": "Personal-finance community; authoritative for money questions.",
+    "weight": 1.1
+  },
+  {
+    "domain": "yelp.ie",
+    "name": "Yelp Ireland",
+    "source_type": "ugc",
+    "sectors": ["food-bev", "hospitality", "consumer"],
+    "notes": "Reviews directory; diminishing but still cited.",
+    "weight": 0.8
+  },
+  {
+    "domain": "tripadvisor.ie",
+    "name": "Tripadvisor Ireland",
+    "source_type": "ugc",
+    "sectors": ["tourism", "hospitality", "food-bev"],
+    "notes": "Tourist-heavy reviews; strong for hotels + attractions.",
+    "weight": 1.1
+  },
+  {
+    "domain": "goldenpages.ie",
+    "name": "Golden Pages",
+    "source_type": "reference",
+    "sectors": ["general", "sme"],
+    "notes": "Irish business directory; legacy but still queried.",
+    "weight": 0.9
+  },
+  {
+    "domain": "yell.com/ireland",
+    "name": "Yell Ireland",
+    "source_type": "reference",
+    "sectors": ["general", "sme"],
+    "notes": "Business directory.",
+    "weight": 0.7
+  },
+  {
+    "domain": "wikipedia.org",
+    "name": "Wikipedia",
+    "source_type": "reference",
+    "sectors": ["general"],
+    "notes": "Baseline reference across all sectors.",
+    "weight": 1.0
+  }
+]

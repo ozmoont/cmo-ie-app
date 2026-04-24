@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { AVAILABLE_COUNTRIES, AVAILABLE_MODELS } from "@/lib/types";
 import type { AIModel, PromptCategory } from "@/lib/types";
+import { listSectorTemplates } from "@/lib/irish-market";
 import {
   Loader2,
   Plus,
@@ -70,6 +71,12 @@ export default function OnboardingPage() {
   ]);
 
   // Step 3: Prompts
+  // Sector picker — optional. When chosen, seeds prompts + competitors
+  // from the curated sector template (still editable in later steps).
+  // `null` means the user skipped / hasn't chosen. See lib/irish-market.
+  const [selectedSector, setSelectedSector] = useState<string | null>(null);
+  const SECTOR_TEMPLATES = listSectorTemplates();
+
   const [prompts, setPrompts] = useState<PromptItem[]>([]);
   const [suggestions, setSuggestions] = useState<PromptItem[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -97,6 +104,49 @@ export default function OnboardingPage() {
     );
   };
 
+  /**
+   * Pick or unpick a sector template. Seeds prompts + competitors from
+   * the template the first time a sector is chosen; swapping to another
+   * sector replaces the seeded rows but leaves anything the user has
+   * typed alone (dedupe by prompt text / competitor name).
+   *
+   * Picking null (clicking the active chip) clears the sector choice
+   * but leaves already-seeded rows in place — the user can still edit.
+   */
+  const pickSector = (slug: string | null) => {
+    if (slug === selectedSector) {
+      setSelectedSector(null);
+      return;
+    }
+    setSelectedSector(slug);
+    if (!slug) return;
+    const template = SECTOR_TEMPLATES.find((t) => t.slug === slug);
+    if (!template) return;
+
+    setPrompts((prev) => {
+      const existingTexts = new Set(prev.map((p) => p.text.toLowerCase()));
+      const seeds = template.sample_prompts
+        .filter((text) => !existingTexts.has(text.toLowerCase()))
+        .map(
+          (text): PromptItem => ({ text, category: "consideration" })
+        );
+      return [...prev, ...seeds];
+    });
+
+    setCompetitors((prev) => {
+      const existingNames = new Set(prev.map((c) => c.name.toLowerCase()));
+      const seeds = template.sample_competitors
+        .filter((c) => !existingNames.has(c.name.toLowerCase()))
+        .map(
+          (c): CompetitorItem => ({
+            name: c.name,
+            website_url: c.website ?? "",
+          })
+        );
+      return [...prev, ...seeds];
+    });
+  };
+
   // Create project when leaving step 2
   const createProject = useCallback(async () => {
     if (projectId) return projectId;
@@ -113,7 +163,26 @@ export default function OnboardingPage() {
           models: selectedModels,
         }),
       });
-      if (!res.ok) throw new Error("Failed to create project");
+      if (!res.ok) {
+        // Surface the server's actual error text so users aren't left
+        // staring at a generic "Failed to create project". Reads both
+        // shapes (`{ error: string }` and raw text) defensively.
+        let message = `Failed to create project (HTTP ${res.status})`;
+        try {
+          const body = await res.json();
+          if (body?.error && typeof body.error === "string") {
+            message = body.error;
+          }
+        } catch {
+          try {
+            const text = await res.text();
+            if (text) message = text;
+          } catch {
+            // stick with the default
+          }
+        }
+        throw new Error(message);
+      }
       const project = await res.json();
       setProjectId(project.id);
       return project.id as string;
@@ -330,6 +399,51 @@ export default function OnboardingPage() {
                       );
                     })}
                   </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-baseline justify-between gap-4 flex-wrap">
+                    <Label>Sector (optional)</Label>
+                    <p className="text-xs text-text-muted">
+                      Pick a sector to pre-fill prompts + competitors. Still
+                      editable in later steps.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {SECTOR_TEMPLATES.map((t) => {
+                      const selected = selectedSector === t.slug;
+                      return (
+                        <button
+                          key={t.slug}
+                          type="button"
+                          onClick={() => pickSector(t.slug)}
+                          className={`inline-flex items-center gap-2 rounded-md border px-4 py-2.5 min-h-[44px] text-sm font-medium transition-[background-color,color,border-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer active:scale-[0.97] ${
+                            selected
+                              ? "border-emerald-dark bg-emerald-dark/5 text-text-primary"
+                              : "border-border text-text-secondary hover:text-text-primary hover:border-border-strong"
+                          }`}
+                        >
+                          {t.name}
+                          {selected && (
+                            <Check className="h-3.5 w-3.5 text-emerald-dark" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedSector && (
+                    <p className="text-xs text-emerald-dark leading-relaxed">
+                      <Sparkles className="inline h-3 w-3 mr-1" />
+                      Seeded{" "}
+                      {SECTOR_TEMPLATES.find((t) => t.slug === selectedSector)
+                        ?.sample_prompts.length ?? 0}{" "}
+                      prompts and{" "}
+                      {SECTOR_TEMPLATES.find((t) => t.slug === selectedSector)
+                        ?.sample_competitors.length ?? 0}{" "}
+                      competitors. You can edit or remove any of them in
+                      steps 3 and 4.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

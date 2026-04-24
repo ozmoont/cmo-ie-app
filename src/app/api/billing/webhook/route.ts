@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { mapPriceToPlan } from "@/lib/billing";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+import { getStripe, mapPriceToPlan } from "@/lib/billing";
 
 export async function POST(request: Request) {
   const admin = createAdminClient();
@@ -23,7 +21,7 @@ export async function POST(request: Request) {
     // Verify webhook signature
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(
+      event = getStripe().webhooks.constructEvent(
         rawBody,
         signature,
         process.env.STRIPE_WEBHOOK_SECRET!
@@ -44,7 +42,7 @@ export async function POST(request: Request) {
 
         if (orgId && session.customer) {
           // Get subscription details
-          const subscription = await stripe.subscriptions.retrieve(
+          const subscription = await getStripe().subscriptions.retrieve(
             session.subscription as string
           );
 
