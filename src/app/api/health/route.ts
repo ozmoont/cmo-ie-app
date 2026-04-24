@@ -58,6 +58,19 @@ export async function GET() {
         GEMINI_API_KEY: envStatus("GEMINI_API_KEY"),
         PERPLEXITY_API_KEY: envStatus("PERPLEXITY_API_KEY"),
         STRIPE_SECRET_KEY: envStatus("STRIPE_SECRET_KEY"),
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: envStatus(
+          "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
+        ),
+        STRIPE_WEBHOOK_SECRET: envStatus("STRIPE_WEBHOOK_SECRET"),
+        NEXT_PUBLIC_STRIPE_PRICE_STARTER: envStatus(
+          "NEXT_PUBLIC_STRIPE_PRICE_STARTER"
+        ),
+        NEXT_PUBLIC_STRIPE_PRICE_PRO: envStatus(
+          "NEXT_PUBLIC_STRIPE_PRICE_PRO"
+        ),
+        NEXT_PUBLIC_STRIPE_PRICE_ADVANCED: envStatus(
+          "NEXT_PUBLIC_STRIPE_PRICE_ADVANCED"
+        ),
         CMO_ADMIN_EMAILS: envStatus("CMO_ADMIN_EMAILS"),
       },
     },
