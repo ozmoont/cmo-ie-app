@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logAiUsage } from "@/lib/ai-usage-logger";
 import {
   extractBrandProfile,
   type BrandProfile,
@@ -146,6 +147,9 @@ export async function POST(request: Request) {
     }
 
     let profile: BrandProfile | null = null;
+    // Captured for ai_usage_events attribution when the project lookup succeeds.
+    let orgIdForLog: string | null = null;
+    let projectIdForLog: string | null = null;
 
     // ── Path A: projectId supplied — use stored profile, extract if missing ──
     if (projectId) {
@@ -153,7 +157,7 @@ export async function POST(request: Request) {
       const { data: project, error: projectError } = await supabase
         .from("projects")
         .select(
-          "id, brand_name, website_url, brand_tracked_name, brand_aliases, profile_short_description, profile_market_segment, profile_brand_identity, profile_target_audience, profile_products_services, profile_updated_at"
+          "id, org_id, brand_name, website_url, brand_tracked_name, brand_aliases, profile_short_description, profile_market_segment, profile_brand_identity, profile_target_audience, profile_products_services, profile_updated_at"
         )
         .eq("id", projectId)
         .maybeSingle<ProjectProfileRow>();
@@ -167,6 +171,8 @@ export async function POST(request: Request) {
 
       brandName = project.brand_tracked_name || project.brand_name;
       websiteUrl = project.website_url ?? undefined;
+      orgIdForLog = (project as ProjectProfileRow & { org_id?: string }).org_id ?? null;
+      projectIdForLog = project.id ?? projectId;
 
       if (profileIsPopulated(project)) {
         profile = profileToBrandProfile(project);
@@ -227,6 +233,7 @@ export async function POST(request: Request) {
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
+    const suggestStartedAt = Date.now();
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1500,
@@ -237,6 +244,17 @@ export async function POST(request: Request) {
           content: renderProfileForPrompt(brandName, websiteUrl ?? null, profile),
         },
       ],
+    });
+    logAiUsage({
+      provider: "anthropic",
+      model: response.model ?? "claude-sonnet-4-6",
+      feature: "prompt_suggest",
+      input_tokens: response.usage?.input_tokens ?? 0,
+      output_tokens: response.usage?.output_tokens ?? 0,
+      org_id: orgIdForLog,
+      project_id: projectIdForLog,
+      duration_ms: Date.now() - suggestStartedAt,
+      success: true,
     });
 
     const textBlock = response.content.find((b) => b.type === "text");

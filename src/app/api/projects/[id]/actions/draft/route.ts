@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import { logAiUsage } from "@/lib/ai-usage-logger";
 import { getProject } from "@/lib/queries";
 import type { DraftOutputType } from "@/lib/types";
 
@@ -103,6 +104,7 @@ export async function POST(
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
+    const draftStartedAt = Date.now();
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4000,
@@ -119,6 +121,18 @@ ${brief}
 Please generate the ${outputType.replace("_", " ")} based on this brief.`,
         },
       ],
+    });
+    logAiUsage({
+      provider: "anthropic",
+      model: response.model ?? "claude-sonnet-4-6",
+      feature: "brief",
+      input_tokens: response.usage?.input_tokens ?? 0,
+      output_tokens: response.usage?.output_tokens ?? 0,
+      org_id: project.org_id,
+      project_id: project.id,
+      user_id: user.id,
+      duration_ms: Date.now() - draftStartedAt,
+      success: true,
     });
 
     const textBlock = response.content.find((b) => b.type === "text");

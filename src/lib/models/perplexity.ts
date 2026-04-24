@@ -36,6 +36,12 @@ interface PerplexityPayload {
     url: string;
     date?: string | null;
   }>;
+  /** OpenAI-compatible usage block. */
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 export const perplexityAdapter: ModelAdapter = {
@@ -153,6 +159,10 @@ export const perplexityAdapter: ModelAdapter = {
       text: text.trim(),
       sources,
       model_version: payload.model,
+      usage: {
+        input_tokens: payload.usage?.prompt_tokens ?? 0,
+        output_tokens: payload.usage?.completion_tokens ?? 0,
+      },
     };
   },
 };

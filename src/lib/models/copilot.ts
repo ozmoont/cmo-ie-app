@@ -67,6 +67,11 @@ interface AzurePayload {
     };
     finish_reason: string;
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 async function runCopilot(
@@ -184,6 +189,10 @@ export const copilotAdapter: ModelAdapter = {
         text,
         sources: parseSources(payload, text),
         model_version: payload.model ?? "copilot-azure",
+        usage: {
+          input_tokens: payload.usage?.prompt_tokens ?? 0,
+          output_tokens: payload.usage?.completion_tokens ?? 0,
+        },
       };
     } catch (err) {
       if (err instanceof AdapterError) throw err;

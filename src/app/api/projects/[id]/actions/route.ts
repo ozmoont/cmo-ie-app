@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logAiUsage } from "@/lib/ai-usage-logger";
 import {
   PLAN_LIMITS,
   type ActionPlan,
@@ -256,6 +257,8 @@ export async function POST(
       actionTier,
       project,
       apiKey: process.env.ANTHROPIC_API_KEY!,
+      orgId: project.org_id,
+      userId: user.id,
     });
 
     return NextResponse.json({
@@ -338,8 +341,11 @@ async function runGenerationInBackground(args: {
     profile_products_services?: { name: string; description: string }[] | null;
   };
   apiKey: string;
+  /** Ops-logging attribution. Safe to omit (falls back to null). */
+  orgId?: string | null;
+  userId?: string | null;
 }): Promise<void> {
-  const { planId, projectId, actionTier, project, apiKey } = args;
+  const { planId, projectId, actionTier, project, apiKey, orgId, userId } = args;
   const admin = createAdminClient();
 
   try {
@@ -394,6 +400,7 @@ async function runGenerationInBackground(args: {
       : "No competitors tracked.";
 
     // ── Team 1: Gap Analyst ──
+    const analystStartedAt = Date.now();
     const analystResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 8000,
@@ -404,6 +411,18 @@ async function runGenerationInBackground(args: {
           content: `${brandBlock}\n\n${competitorBlock}\n\nVisibility gaps:\n${JSON.stringify(gapData, null, 2)}`,
         },
       ],
+    });
+    logAiUsage({
+      provider: "anthropic",
+      model: analystResponse.model ?? "claude-sonnet-4-6",
+      feature: "action_plan",
+      input_tokens: analystResponse.usage?.input_tokens ?? 0,
+      output_tokens: analystResponse.usage?.output_tokens ?? 0,
+      org_id: orgId ?? null,
+      project_id: projectId,
+      user_id: userId ?? null,
+      duration_ms: Date.now() - analystStartedAt,
+      success: true,
     });
     if (analystResponse.stop_reason === "max_tokens") {
       throw new Error(
@@ -419,6 +438,7 @@ async function runGenerationInBackground(args: {
 
     // ── Team 2: Strategist ── (only for Pro+ users)
     if (actionTier !== "gaps") {
+      const strategistStartedAt = Date.now();
       const strategistResponse = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 12000,
@@ -429,6 +449,18 @@ async function runGenerationInBackground(args: {
             content: `${brandBlock}\n\nIndustry context: Irish market\n${competitorBlock}\n\nGap analyses from our analyst team:\n${JSON.stringify(analyses, null, 2)}\n\nKeep the output tight. Trim descriptions to what's needed to act on — exhaustive prose inflates token counts without improving the plan. Target max 2 sentences per action description.`,
           },
         ],
+      });
+      logAiUsage({
+        provider: "anthropic",
+        model: strategistResponse.model ?? "claude-sonnet-4-6",
+        feature: "action_plan",
+        input_tokens: strategistResponse.usage?.input_tokens ?? 0,
+        output_tokens: strategistResponse.usage?.output_tokens ?? 0,
+        org_id: orgId ?? null,
+        project_id: projectId,
+        user_id: userId ?? null,
+        duration_ms: Date.now() - strategistStartedAt,
+        success: true,
       });
       if (strategistResponse.stop_reason === "max_tokens") {
         throw new Error(

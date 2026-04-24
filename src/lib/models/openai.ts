@@ -46,6 +46,13 @@ interface ResponsesPayload {
       }
     | { type: string }
   >;
+  /** OpenAI token usage. Absent on cached fixtures; treat as zero. */
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    // The Responses API also reports total_tokens + reasoning_tokens;
+    // we don't need either for pricing.
+  };
 }
 
 export const openaiAdapter: ModelAdapter = {
@@ -164,6 +171,10 @@ export const openaiAdapter: ModelAdapter = {
       text: textParts.join("\n").trim(),
       sources,
       model_version: payload.model,
+      usage: {
+        input_tokens: payload.usage?.input_tokens ?? 0,
+        output_tokens: payload.usage?.output_tokens ?? 0,
+      },
     };
   },
 };

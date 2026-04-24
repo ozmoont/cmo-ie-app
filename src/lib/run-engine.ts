@@ -31,6 +31,20 @@ import {
 import { classifyRunArtifacts } from "@/lib/classifiers/queue";
 import type { AIModel, Prompt, Competitor, Project } from "@/lib/types";
 import { MODEL_LABELS } from "@/lib/types";
+import { logAiUsage } from "@/lib/ai-usage-logger";
+import type { Provider } from "@/lib/ai-pricing";
+
+// AIModel (the internal union — "claude", "chatgpt", etc.) → ai_usage_events
+// provider enum. Keep in sync with migration 020.
+const MODEL_TO_PROVIDER: Record<AIModel, Provider> = {
+  claude: "anthropic",
+  chatgpt: "openai",
+  perplexity: "perplexity",
+  gemini: "gemini",
+  google_aio: "gemini",
+  grok: "grok",
+  copilot: "copilot",
+};
 
 // ── Types ──
 
@@ -184,13 +198,16 @@ async function sentimentForTrackedBrand(
   anthropic: Anthropic,
   trackedBrandName: string,
   responseText: string,
-  trackedBrandMatched: boolean
+  trackedBrandMatched: boolean,
+  logContext?: { org_id?: string | null; project_id?: string | null; byok?: boolean }
 ): Promise<"positive" | "neutral" | "negative" | null> {
   if (!trackedBrandMatched || !responseText.trim()) return null;
 
+  const sentimentStartedAt = Date.now();
+  const SENTIMENT_MODEL = "claude-haiku-4-5-20251001";
   try {
     const analysis = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: SENTIMENT_MODEL,
       max_tokens: 120,
       system: SENTIMENT_SYSTEM,
       messages: [
@@ -206,6 +223,21 @@ ${responseText.slice(0, 6000)}
 Return JSON only.`,
         },
       ],
+    });
+
+    // Log — sentiment is 1 call per run_check so it's ~25-50% of the
+    // Haiku token volume. Small per-call but adds up.
+    logAiUsage({
+      provider: "anthropic",
+      model: analysis.model ?? SENTIMENT_MODEL,
+      feature: "sentiment",
+      input_tokens: analysis.usage?.input_tokens ?? 0,
+      output_tokens: analysis.usage?.output_tokens ?? 0,
+      org_id: logContext?.org_id ?? null,
+      project_id: logContext?.project_id ?? null,
+      byok: logContext?.byok ?? false,
+      duration_ms: Date.now() - sentimentStartedAt,
+      success: true,
     });
 
     const raw =
@@ -232,8 +264,19 @@ Return JSON only.`,
       return parsed.sentiment;
     }
     return null;
-  } catch {
+  } catch (err) {
     // Never fail the run on a sentiment-analysis hiccup.
+    logAiUsage({
+      provider: "anthropic",
+      model: SENTIMENT_MODEL,
+      feature: "sentiment",
+      org_id: logContext?.org_id ?? null,
+      project_id: logContext?.project_id ?? null,
+      byok: logContext?.byok ?? false,
+      duration_ms: Date.now() - sentimentStartedAt,
+      success: false,
+      error_code: err instanceof Error ? err.message.slice(0, 120) : "unknown",
+    });
     return null;
   }
 }
@@ -303,6 +346,7 @@ async function loadOrgApiKeys(
 type RunEngineProject = Pick<
   Project,
   | "id"
+  | "org_id"
   | "brand_name"
   | "website_url"
   | "brand_display_name"
@@ -511,7 +555,24 @@ export async function executeRun(
           ADAPTER_TIMEOUT_MS,
           `${modelLabel} on "${prompt.text.slice(0, 40)}..."`
         );
-        void startedAt;
+
+        // Log the visibility-check call for the ops dashboard. This is
+        // the most frequent provider call in the product (prompts ×
+        // models × runs) so it dominates the monthly bill — we want
+        // tight attribution here above all other features.
+        logAiUsage({
+          provider: MODEL_TO_PROVIDER[adapter.name],
+          model: modelResponse.model_version,
+          feature: "run_check",
+          input_tokens: modelResponse.usage?.input_tokens ?? 0,
+          output_tokens: modelResponse.usage?.output_tokens ?? 0,
+          web_search_calls: modelResponse.usage?.web_search_calls,
+          org_id: project.org_id,
+          project_id: project.id,
+          byok: Boolean(apiKeys[adapter.name]),
+          duration_ms: Date.now() - startedAt,
+          success: true,
+        });
 
             // Step B — Deterministic brand matching using tracked_name +
             // aliases + regex. We no longer ask Claude to detect brands,
@@ -525,7 +586,8 @@ export async function executeRun(
               anthropic,
               trackedBrandName,
               modelResponse.text,
-              trackedMatch !== null
+              trackedMatch !== null,
+              { org_id: project.org_id, project_id: project.id, byok: Boolean(apiKeys.claude) }
             );
 
             const taggedSources = tagSources(
@@ -582,6 +644,21 @@ export async function executeRun(
               `Run ${runId}: ${adapter.name}/${prompt.id} failed:`,
               errMsg
             );
+
+            // Log the failed call so the dashboard shows an error
+            // spike when a provider goes down or credits run out.
+            // Tokens are zero (we didn't get a response), cost is zero.
+            logAiUsage({
+              provider: MODEL_TO_PROVIDER[adapter.name],
+              model: "unknown",
+              feature: "run_check",
+              org_id: project.org_id,
+              project_id: project.id,
+              byok: Boolean(apiKeys[adapter.name]),
+              duration_ms: Date.now() - startedAt,
+              success: false,
+              error_code: errMsg.slice(0, 120),
+            });
 
             allResults.push({
               prompt_id: prompt.id,

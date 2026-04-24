@@ -20,6 +20,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import { logAiUsage } from "@/lib/ai-usage-logger";
 import {
   consumeBriefCredit,
   getProject,
@@ -176,11 +177,24 @@ Description: ${b.actionDescription ?? "Not specified"}
 Please create a detailed content brief for this action.`;
     }
 
+    const briefStartedAt = Date.now();
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 3000,
       system,
       messages: [{ role: "user", content: userMessage }],
+    });
+    logAiUsage({
+      provider: "anthropic",
+      model: response.model ?? "claude-sonnet-4-6",
+      feature: "brief",
+      input_tokens: response.usage?.input_tokens ?? 0,
+      output_tokens: response.usage?.output_tokens ?? 0,
+      org_id: project.org_id,
+      project_id: project.id,
+      user_id: user.id,
+      duration_ms: Date.now() - briefStartedAt,
+      success: true,
     });
 
     const textBlock = response.content.find((b) => b.type === "text");

@@ -19,6 +19,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { logAiUsage } from "@/lib/ai-usage-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDomainGaps } from "@/lib/queries/gap-analysis";
 import { computeShareOfVoice } from "@/lib/format";
@@ -123,6 +124,16 @@ export async function generateMonthlyPlaybook(
     throw new Error("ANTHROPIC_API_KEY not configured");
   }
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // Look up org_id for cost attribution — one cheap extra select, vs
+  // threading org_id through buildInputBundle which has four other
+  // callers we don't want to touch here.
+  const { data: orgLookup } = await admin
+    .from("projects")
+    .select("org_id")
+    .eq("id", projectId)
+    .maybeSingle<{ org_id: string }>();
+
+  const playbookStartedAt = Date.now();
   const response = await anthropic.messages.create({
     model: opts.model ?? DEFAULT_MODEL,
     max_tokens: 1500,
@@ -136,6 +147,17 @@ ${JSON.stringify(bundle, null, 2)}
 Write this month's playbook.`,
       },
     ],
+  });
+  logAiUsage({
+    provider: "anthropic",
+    model: response.model ?? opts.model ?? DEFAULT_MODEL,
+    feature: "playbook",
+    input_tokens: response.usage?.input_tokens ?? 0,
+    output_tokens: response.usage?.output_tokens ?? 0,
+    org_id: orgLookup?.org_id ?? null,
+    project_id: projectId,
+    duration_ms: Date.now() - playbookStartedAt,
+    success: true,
   });
   const textBlock = response.content.find((b) => b.type === "text");
   const markdown =

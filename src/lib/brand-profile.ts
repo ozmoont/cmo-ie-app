@@ -13,6 +13,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { logAiUsage } from "@/lib/ai-usage-logger";
 
 export interface BrandProductService {
   name: string;
@@ -330,7 +331,7 @@ CRITICAL rules — breaking any one is a failure:
 export async function extractBrandProfile(
   brandName: string,
   websiteUrl: string | null,
-  opts: { apiKey?: string } = {}
+  opts: { apiKey?: string; orgId?: string | null; projectId?: string | null } = {}
 ): Promise<BrandProfile | null> {
   if (!websiteUrl) {
     console.warn(
@@ -352,6 +353,7 @@ export async function extractBrandProfile(
 
   const client = new Anthropic({ apiKey });
 
+  const startedAt = Date.now();
   try {
     const msg = await client.messages.create({
       model: "claude-sonnet-4-6",
@@ -367,6 +369,18 @@ export async function extractBrandProfile(
           ].join("\n"),
         },
       ],
+    });
+    logAiUsage({
+      provider: "anthropic",
+      model: msg.model ?? "claude-sonnet-4-6",
+      feature: "brand_extract",
+      input_tokens: msg.usage?.input_tokens ?? 0,
+      output_tokens: msg.usage?.output_tokens ?? 0,
+      org_id: opts.orgId ?? null,
+      project_id: opts.projectId ?? null,
+      byok: Boolean(opts.apiKey),
+      duration_ms: Date.now() - startedAt,
+      success: true,
     });
 
     const text =

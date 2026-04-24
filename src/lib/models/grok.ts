@@ -38,6 +38,12 @@ interface ChatCompletionsPayload {
     finish_reason: string;
   }>;
   citations?: Array<string | { url?: string; title?: string }>;
+  /** xAI echoes OpenAI's usage shape. */
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 function keyFor(opts?: QueryOptions): string | null {
@@ -149,6 +155,10 @@ export const grokAdapter: ModelAdapter = {
         text,
         sources: parseSources(payload, text),
         model_version: payload.model ?? MODEL_ID,
+        usage: {
+          input_tokens: payload.usage?.prompt_tokens ?? 0,
+          output_tokens: payload.usage?.completion_tokens ?? 0,
+        },
       };
     } catch (err) {
       if (err instanceof AdapterError) throw err;

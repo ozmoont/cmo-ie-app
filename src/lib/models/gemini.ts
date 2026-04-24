@@ -37,6 +37,11 @@ interface GeminiPayload {
     };
   }>;
   modelVersion?: string;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
 }
 
 export const geminiAdapter: ModelAdapter = {
@@ -116,7 +121,15 @@ export const geminiAdapter: ModelAdapter = {
 
     const candidate = payload.candidates?.[0];
     if (!candidate) {
-      return { text: "", sources: [], model_version: MODEL_ID };
+      return {
+        text: "",
+        sources: [],
+        model_version: MODEL_ID,
+        usage: {
+          input_tokens: payload.usageMetadata?.promptTokenCount ?? 0,
+          output_tokens: payload.usageMetadata?.candidatesTokenCount ?? 0,
+        },
+      };
     }
 
     const text = (candidate.content?.parts ?? [])
@@ -153,6 +166,10 @@ export const geminiAdapter: ModelAdapter = {
       text,
       sources,
       model_version: payload.modelVersion ?? MODEL_ID,
+      usage: {
+        input_tokens: payload.usageMetadata?.promptTokenCount ?? 0,
+        output_tokens: payload.usageMetadata?.candidatesTokenCount ?? 0,
+      },
     };
   },
 };

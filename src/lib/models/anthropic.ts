@@ -147,10 +147,24 @@ export const anthropicAdapter: ModelAdapter = {
       // of real Claude responses without a live API call.
       const { text, sources } = parseAnthropicContent(message.content);
 
+      // Count web_search invocations in the content blocks for cost
+      // attribution (Anthropic bills ~$0.01 per call on top of tokens).
+      // `server_tool_use` blocks are emitted one per tool invocation.
+      const web_search_calls = Array.isArray(message.content)
+        ? message.content.filter(
+            (b) => (b as { type?: string }).type === "server_tool_use"
+          ).length
+        : 0;
+
       return {
         text,
         sources,
         model_version: message.model,
+        usage: {
+          input_tokens: message.usage?.input_tokens ?? 0,
+          output_tokens: message.usage?.output_tokens ?? 0,
+          web_search_calls,
+        },
       };
     } catch (err) {
       throw new AdapterError(

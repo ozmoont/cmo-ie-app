@@ -28,6 +28,20 @@ export interface ModelSource {
 }
 
 /**
+ * Token + tool-call usage for one adapter call. Optional so tests and
+ * older providers can still return a ModelResponse without supplying
+ * it. Feeds directly into `lib/ai-pricing` + `lib/ai-usage-logger` so
+ * the ops dashboard has per-call attribution.
+ */
+export interface ModelUsage {
+  input_tokens: number;
+  output_tokens: number;
+  /** Provider-specific surcharge counters. Currently only Anthropic
+   *  exposes `web_search` call count on the response. */
+  web_search_calls?: number;
+}
+
+/**
  * The canonical response shape every adapter returns. Everything the
  * run engine needs to persist a chat.
  */
@@ -38,6 +52,12 @@ export interface ModelResponse {
   sources: ModelSource[];
   /** Which concrete model/version produced this (e.g. "gpt-4.1-2025-04-14"). */
   model_version: string;
+  /**
+   * Token usage + tool-call counts. Absent on older mock fixtures; the
+   * usage logger treats absence as zero (which correctly means "no
+   * data" rather than "free").
+   */
+  usage?: ModelUsage;
   /**
    * Opaque raw provider response for debugging. Never rendered; should be
    * truncated or dropped before logging. Never persisted to the DB.
