@@ -16,7 +16,18 @@ import {
   ArrowRight,
   ArrowLeft,
   Save,
+  Sparkles,
+  Check,
+  X,
 } from "lucide-react";
+
+interface SuggestedBrand {
+  id: string;
+  brand_name: string;
+  mention_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+}
 
 export default function CompetitorsPage() {
   const params = useParams();
@@ -27,6 +38,11 @@ export default function CompetitorsPage() {
   const [newName, setNewName] = useState("");
   const [newUrl, setNewUrl] = useState("");
 
+  // Auto-detected suggestions from recent runs. Independent fetch so a
+  // slow suggestion query can't block the core tracked-list render.
+  const [suggestions, setSuggestions] = useState<SuggestedBrand[]>([]);
+  const [actingOn, setActingOn] = useState<string | null>(null);
+
   const fetchCompetitors = useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}/competitors`);
     if (res.ok) {
@@ -36,12 +52,22 @@ export default function CompetitorsPage() {
     setLoading(false);
   }, [projectId]);
 
+  const fetchSuggestions = useCallback(async () => {
+    const res = await fetch(
+      `/api/projects/${projectId}/competitors/suggestions`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      setSuggestions(data.suggestions ?? []);
+    }
+  }, [projectId]);
+
   // Load competitors on mount. setState happens after await, not
   // synchronously in the effect body.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCompetitors();
-  }, [fetchCompetitors]);
+    fetchSuggestions();
+  }, [fetchCompetitors, fetchSuggestions]);
 
   // "Saved" pulse — fired imperatively after each successful mutation
   // rather than via an effect tracking list length, which avoids the
@@ -86,6 +112,45 @@ export default function CompetitorsPage() {
     if (res.ok) {
       setCompetitors((prev) => prev.filter((c) => c.id !== id));
       triggerSaved();
+    }
+  };
+
+  // Suggestion actions — track promotes to a real competitor row,
+  // reject burns the suggestion so the run engine doesn't re-surface
+  // it. Optimistic UI: remove the row from state immediately; on
+  // server error, refetch to restore truth.
+  const actOnSuggestion = async (
+    suggestionId: string,
+    action: "track" | "reject"
+  ) => {
+    setActingOn(suggestionId);
+    // Optimistic remove
+    setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId));
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/competitors/suggestions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ suggestionId, action }),
+        }
+      );
+      if (!res.ok) {
+        // Restore the list from server state — our optimistic remove
+        // was wrong. Caller sees a brief flicker which is fine at
+        // this low frequency.
+        await fetchSuggestions();
+        return;
+      }
+      if (action === "track") {
+        const data = (await res.json()) as { competitor?: Competitor };
+        if (data.competitor) {
+          setCompetitors((prev) => [...prev, data.competitor as Competitor]);
+          triggerSaved();
+        }
+      }
+    } finally {
+      setActingOn(null);
     }
   };
 
@@ -172,6 +237,71 @@ export default function CompetitorsPage() {
           </p>
         </div>
       </section>
+
+      {/* ── Suggested by AI ──
+          Appears only when the run engine has observed unknown brands
+          in AI responses at least SUGGESTION_THRESHOLD (2) times.
+          Quietly absent on brand-new projects. */}
+      {suggestions.length > 0 && (
+        <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 md:py-12 border-b border-border">
+          <div className="col-span-12 md:col-span-3 space-y-1">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="inline-block w-4 h-[2px] bg-emerald-dark"
+              />
+              <Sparkles className="h-3 w-3" />
+              Suggested · {suggestions.length}
+            </p>
+            <p className="text-xs text-text-muted leading-relaxed">
+              Brands AI models mentioned alongside yours. Track the ones
+              you actually compete with.
+            </p>
+          </div>
+          <div className="col-span-12 md:col-span-9 max-w-3xl">
+            <ul className="divide-y divide-border border-y border-border">
+              {suggestions.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between gap-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-text-primary truncate">
+                      {s.brand_name}
+                    </p>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      Mentioned {s.mention_count}{" "}
+                      {s.mention_count === 1 ? "time" : "times"} across recent
+                      runs
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => actOnSuggestion(s.id, "track")}
+                      disabled={actingOn === s.id}
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      Track
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => actOnSuggestion(s.id, "reject")}
+                      disabled={actingOn === s.id}
+                      className="text-text-muted hover:text-danger"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      Reject
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* ── Tracked list ── */}
       <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 md:py-12">

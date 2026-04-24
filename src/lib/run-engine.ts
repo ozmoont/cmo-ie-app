@@ -29,6 +29,10 @@ import {
   type BrandMatch,
 } from "@/lib/brand-matching";
 import { classifyRunArtifacts } from "@/lib/classifiers/queue";
+import {
+  filterUntrackedBrands,
+  recordSuggestionObservations,
+} from "@/lib/competitor-suggestions";
 import type { AIModel, Prompt, Competitor, Project } from "@/lib/types";
 import { MODEL_LABELS } from "@/lib/types";
 import { logAiUsage } from "@/lib/ai-usage-logger";
@@ -833,6 +837,63 @@ export async function executeRun(
         err
       );
     });
+
+    // Fire-and-forget: aggregate competitor suggestions from every
+    // brand mention that WASN'T tracked (project's own brand or an
+    // already-tracked competitor). These upsert into
+    // competitor_suggestions; rows with mention_count >= threshold
+    // surface on the Competitors page as "Suggested brands".
+    //
+    // Deliberately async: the user sees "Run complete" immediately;
+    // the suggestions feed in as the background write finishes. Safe
+    // to fail quietly — suggestions are an enrichment, not a blocker.
+    void (async () => {
+      try {
+        const observed: string[] = [];
+        for (const r of allResults) {
+          for (const m of r.brand_mentions) {
+            if (m.brand.is_tracked_brand) continue;
+            // One entry per mention (not per unique name) — the
+            // recorder aggregates in-memory before writing, and we
+            // want higher-frequency brands to rank higher.
+            observed.push(m.brand.display_name);
+          }
+        }
+        if (observed.length === 0) return;
+
+        const untracked = filterUntrackedBrands(
+          observed,
+          {
+            trackedName: trackedBrandName,
+            aliases: project.brand_aliases ?? [],
+          },
+          competitors
+        );
+        if (untracked.length === 0) return;
+
+        // We need the *per-mention* list (with repeats) not just the
+        // unique untracked names — recompute by filtering `observed`
+        // down to the entries whose normalised form survived the
+        // tracked-brand filter.
+        const untrackedSet = new Set(
+          untracked.map((n) => n.trim().toLowerCase())
+        );
+        const perMentionList = observed.filter((n) =>
+          untrackedSet.has(n.trim().toLowerCase())
+        );
+
+        await recordSuggestionObservations(
+          admin,
+          projectId,
+          perMentionList
+        );
+      } catch (err) {
+        console.error(
+          `Post-run suggestions sweep failed (run ${runId}):`,
+          err
+        );
+      }
+    })();
 
     return { runId, resultCount: allResults.length };
   } catch (err) {
