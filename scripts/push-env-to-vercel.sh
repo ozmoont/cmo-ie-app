@@ -32,9 +32,15 @@ if [[ ! -f "$ENVFILE" ]]; then
   exit 1
 fi
 
-if ! command -v vercel >/dev/null 2>&1; then
-  echo "Vercel CLI not installed. Run: npm install -g vercel" >&2
-  exit 1
+# Resolve the `vercel` binary. Prefer a globally installed one if
+# present; fall back to `npx vercel` so the script works on machines
+# where `npm install -g` hit permission issues (common on macOS when
+# /usr/local is root-owned).
+if command -v vercel >/dev/null 2>&1; then
+  VERCEL_CMD=(vercel)
+else
+  echo "  (no global vercel — using 'npx vercel')"
+  VERCEL_CMD=(npx --yes vercel)
 fi
 
 # `vercel link` writes .vercel/project.json. Without it, `vercel env`
@@ -84,12 +90,12 @@ while IFS='=' read -r key value || [[ -n "${key:-}" ]]; do
   # Remove the existing row (if any) so `add` doesn't complain about
   # a duplicate. `--yes` skips the confirmation prompt. 2>/dev/null
   # hides the "not found" noise when the key isn't already set.
-  vercel env rm "$key" "$TARGET" --yes >/dev/null 2>&1 || true
+  "${VERCEL_CMD[@]}" env rm "$key" "$TARGET" --yes >/dev/null 2>&1 || true
 
   # `vercel env add` reads the value from stdin. `printf '%s'`
   # avoids trailing newlines that `echo` adds (which would make the
   # value 1 char longer than the .env.local source).
-  printf '%s' "$value" | vercel env add "$key" "$TARGET" >/dev/null
+  printf '%s' "$value" | "${VERCEL_CMD[@]}" env add "$key" "$TARGET" >/dev/null
 
   added=$((added + 1))
 done < "$ENVFILE"
