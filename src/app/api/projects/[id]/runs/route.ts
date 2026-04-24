@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getProject, getPrompts, getCompetitors } from "@/lib/queries";
 import { executeRun } from "@/lib/run-engine";
+import { PLAN_LIMITS, type AIModel } from "@/lib/types";
 
 // POST - trigger a new visibility run with SSE progress streaming
 export async function POST(
@@ -48,6 +50,55 @@ export async function POST(
       );
     }
 
+    // ── Plan-based cost controls ─────────────────────────────────
+    // Enforce runsPerMonth + cap project.models to the plan's max.
+    // Both are primary cost throttles: runs/month directly scales the
+    // provider bill, and models-per-project multiplies every check.
+    const admin = createAdminClient();
+    const { data: org } = await admin
+      .from("organisations")
+      .select("plan")
+      .eq("id", project.org_id)
+      .maybeSingle<{ plan: string }>();
+    const plan = (org?.plan ?? "trial") as keyof typeof PLAN_LIMITS;
+    const limits = PLAN_LIMITS[plan];
+
+    if (limits.runsPerMonth !== Infinity) {
+      const now = new Date();
+      const monthStart = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+      ).toISOString();
+      const { count: runsThisMonth } = await admin
+        .from("daily_runs")
+        .select("*", { count: "exact", head: true })
+        .eq("project_id", projectId)
+        .gte("created_at", monthStart);
+      if ((runsThisMonth ?? 0) >= limits.runsPerMonth) {
+        return NextResponse.json(
+          {
+            error: `Run limit reached. Your ${plan} plan allows ${limits.runsPerMonth} runs per month. Upgrade for more frequent tracking.`,
+            code: "runs_per_month_exceeded",
+            plan,
+            runs_per_month: limits.runsPerMonth,
+            runs_this_month: runsThisMonth,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Cap the models array to the plan's max. Users on older plans
+    // may have projects seeded with more models than their current
+    // tier permits; we trim silently rather than fail — the customer
+    // still gets a full run, just narrower. If they complain, the
+    // upsell conversation writes itself.
+    const cappedModels: AIModel[] =
+      limits.models === Infinity
+        ? project.models
+        : project.models.slice(0, limits.models);
+    // Remaining code uses `cappedModels` instead of `project.models`
+    // for the executeRun call.
+
     // Stream progress via SSE
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -62,7 +113,7 @@ export async function POST(
           await executeRun(
             project,
             activePrompts,
-            project.models,
+            cappedModels,
             competitors,
             (event) => send(event)
           );

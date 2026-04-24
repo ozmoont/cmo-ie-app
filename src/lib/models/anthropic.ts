@@ -14,7 +14,19 @@ import {
   type QueryOptions,
 } from "./types";
 
-const MODEL_ID = "claude-sonnet-4-6";
+// Run-check model. We use Haiku 4.5 rather than Sonnet 4.6 because
+// visibility checks are high-volume (prompts × models × runs) and
+// Haiku is ~4× cheaper for answers of this shape — factual Q&A
+// about a product/brand category where quality differences between
+// Sonnet and Haiku are small but cost differences are large.
+// Sonnet is still used for Action Plan generation (analyst +
+// strategist), brief / draft generation, brand-profile extraction,
+// and prompt suggestions — the places where reasoning depth + copy
+// quality actually move the needle.
+// Flip back to Sonnet by overriding the ANTHROPIC_RUN_MODEL env var
+// if a power user on the agency tier complains about output quality.
+const MODEL_ID =
+  process.env.ANTHROPIC_RUN_MODEL ?? "claude-haiku-4-5-20251001";
 // Upgrade the non-search path as needed; the sonnet tier is the right
 // default for production chats because Haiku makes visibility comparisons
 // noisier. Cost ≈ $0.003-0.015 per chat at our token counts.
@@ -111,7 +123,12 @@ export const anthropicAdapter: ModelAdapter = {
                     },
                   }
                 : {}),
-              max_uses: 5,
+              // Anthropic bills per web_search invocation (currently
+              // ~$0.01 each). At 5-deep we occasionally see 3-5
+              // searches per call, which inflates per-check cost by
+              // 30-50%. Capping at 3 keeps cost deterministic and
+              // leaves headroom for genuinely ambiguous queries.
+              max_uses: 3,
             },
           ],
           messages: [

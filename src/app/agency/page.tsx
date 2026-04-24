@@ -145,18 +145,22 @@ export default function AgencyLandingPage() {
           Pricing
         </p>
         <h2 className="text-3xl md:text-4xl font-semibold tracking-tight leading-[1.1] mb-4">
-          Agency plans start at €500/mo.
+          Agency plans from €999/mo — BYOK or metered.
         </h2>
         <p className="text-base text-text-secondary leading-relaxed max-w-2xl mb-10">
-          Pricing scales with the credit pool. Unlimited projects, prompts,
-          and competitors across every plan — credits are the only thing
-          that varies. All plans include the REST API, MCP server, and
-          per-client caps.
+          Unlimited projects, prompts, and competitors across every
+          plan — credit pools are the only thing that varies. Every
+          tier supports{" "}
+          <strong className="text-text-primary">Bring Your Own Key</strong>{" "}
+          so your Anthropic / OpenAI / Perplexity spend lands on your
+          own card, not ours — perfect for agencies with client-billable
+          AI budgets. If you prefer simple flat billing, we charge
+          managed-usage fees to your payment method.
         </p>
         <div className="grid md:grid-cols-3 gap-6">
           <PricingTier
             name="Starter"
-            price="€500"
+            price="€999"
             credits="100 briefs / month"
             blurb="For small agencies managing 3-5 client brands."
             features={[
@@ -164,12 +168,13 @@ export default function AgencyLandingPage() {
               "Unlimited projects",
               "Roll-up dashboard",
               "REST API + MCP",
+              "BYOK or managed usage",
               "Email support",
             ]}
           />
           <PricingTier
             name="Growth"
-            price="€1,000"
+            price="€1,499"
             credits="250 briefs / month"
             featured
             blurb="For agencies running AI-search tracking as a live product line."
@@ -183,7 +188,7 @@ export default function AgencyLandingPage() {
           />
           <PricingTier
             name="Scale"
-            price="€2,000"
+            price="€2,499"
             credits="600 briefs / month"
             blurb="For agencies running 15+ client brands and resale."
             features={[

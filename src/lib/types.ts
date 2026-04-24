@@ -218,6 +218,14 @@ export const PLAN_LIMITS: Record<
     competitors: number;
     models: number;
     totalChecks: number; // max prompt×model checks per month (Infinity = unlimited)
+    /**
+     * Run frequency cap — how many times /api/projects/[id]/runs can
+     * be triggered per calendar month. This is the primary cost
+     * throttle: each run fires (prompts × models) provider calls, so
+     * frequency directly multiplies the monthly bill. Enforced by
+     * the run route against `daily_runs` count for the current month.
+     */
+    runsPerMonth: number;
     actionTier: "gaps" | "strategy" | "full";
     briefCredits: number;
     blurResults: boolean; // if true, show 1 result clear + blur the rest
@@ -229,50 +237,62 @@ export const PLAN_LIMITS: Record<
     competitors: 3,
     models: 3,
     totalChecks: 10,
+    runsPerMonth: 2,
     actionTier: "gaps",
     briefCredits: 0,
     blurResults: true,
   },
+  // Starter — €249/mo. 25 prompts × 2 models × 4 runs/mo = 200
+  // checks, target spend ~€40/mo, target margin ~€200.
   starter: {
     projects: 1,
     prompts: 25,
     competitors: 5,
-    models: 3,
+    models: 2,
     totalChecks: Infinity,
+    runsPerMonth: 4,
     actionTier: "gaps",
     briefCredits: 5,
     blurResults: false,
   },
+  // Pro — €499/mo. 50 prompts × 4 models × 30 runs/mo = 6,000 checks,
+  // target spend ~€100/mo with Haiku runs, margin ~€400.
   pro: {
     projects: 3,
     prompts: 50,
     competitors: 10,
-    models: 5,
+    models: 4,
     totalChecks: Infinity,
+    runsPerMonth: 30,
     actionTier: "strategy",
     briefCredits: 20,
     blurResults: false,
   },
+  // Advanced — €999/mo. Unlimited prompts + runs. Expected shape:
+  // ~100 prompts × 5 models × 30 runs = 15k checks, ~€200/mo spend,
+  // margin ~€800.
   advanced: {
     projects: Infinity,
     prompts: Infinity,
     competitors: Infinity,
     models: 5,
     totalChecks: Infinity,
+    runsPerMonth: Infinity,
     actionTier: "full",
-    briefCredits: Infinity,
+    briefCredits: 50,
     blurResults: false,
   },
-  // Agency tier: unlimited projects / prompts / competitors. The
-  // briefCredits limit here is the DEFAULT shown when `agency_credit_pool`
-  // is unset; in practice callers should read `agency_credit_pool`
-  // from the org row (see lib/queries.getOrgBriefCredits).
+  // Agency — €999-€2499/mo. BYOK-preferred so Anthropic/OpenAI spend
+  // is on the customer's keys; the pool is for briefs + our managed
+  // adapters. agency_credit_pool on the org row overrides the
+  // briefCredits default here (see lib/queries.getOrgBriefCredits).
   agency: {
     projects: Infinity,
     prompts: Infinity,
     competitors: Infinity,
     models: 5,
     totalChecks: Infinity,
+    runsPerMonth: Infinity,
     actionTier: "full",
     briefCredits: 100,
     blurResults: false,
