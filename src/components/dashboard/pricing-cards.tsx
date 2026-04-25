@@ -12,42 +12,56 @@ interface Plan {
   features: string[];
 }
 
+// Source of truth for displayed plan info. Must match:
+//   - src/app/pricing/page.tsx (public pricing page)
+//   - src/app/page.tsx          (#pricing section on landing)
+//   - src/lib/types.ts          (PLAN_LIMITS — runtime caps)
+// If you re-price tiers in Stripe live, update these monthlyPrice
+// values to match. The price IDs themselves don't change with price
+// changes (Stripe creates a new price object behind the scenes), so
+// env vars stay the same — but the displayed € amount needs updating.
 const PLANS: Record<string, Plan> = {
   starter: {
     name: "Starter",
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER || "",
-    monthlyPrice: 49,
+    monthlyPrice: 249,
     features: [
       "1 project",
-      "50 prompts per month",
-      "3 AI models",
-      "Basic analytics",
+      "25 prompts tracked",
+      "2 AI models",
+      "Weekly runs (4 / month)",
+      "Gap insights",
+      "5 brief credits / month",
       "Email support",
     ],
   },
   pro: {
     name: "Pro",
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO || "",
-    monthlyPrice: 149,
+    monthlyPrice: 499,
     features: [
       "3 projects",
-      "150 prompts per month",
-      "5 AI models",
-      "Advanced analytics",
-      "Priority email support",
+      "50 prompts tracked",
+      "4 AI models",
+      "Daily runs (30 / month)",
+      "Strategy + briefs",
+      "20 brief credits / month",
+      "Priority support",
     ],
   },
   advanced: {
     name: "Advanced",
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_ADVANCED || "",
-    monthlyPrice: 349,
+    monthlyPrice: 999,
     features: [
       "Unlimited projects",
       "Unlimited prompts",
-      "All AI models",
-      "Real-time analytics",
-      "24/7 priority support",
-      "Custom integrations",
+      "All 5 AI models",
+      "Unlimited runs",
+      "Full action plans + drafts",
+      "50 brief credits / month",
+      "REST API + MCP access",
+      "Dedicated account manager",
     ],
   },
 };
@@ -136,7 +150,7 @@ export function PricingCards({ currentPlan }: PricingCardsProps) {
               <CardTitle className="text-2xl">{plan.name}</CardTitle>
               <CardDescription className="mt-4">
                 <span className="text-3xl font-bold text-text-primary">
-                  EUR {plan.monthlyPrice}
+                  €{plan.monthlyPrice}
                 </span>
                 <span className="text-text-secondary ml-2">/month</span>
               </CardDescription>

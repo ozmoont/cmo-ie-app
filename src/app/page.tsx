@@ -1294,9 +1294,9 @@ export default function Home() {
             <div>
               <p className="text-sm font-semibold text-text-primary mb-4">Legal</p>
               <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Cookie Policy</a></li>
+                <li><Link href="/privacy" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Privacy Policy</Link></li>
+                <li><Link href="/terms" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Terms of Service</Link></li>
+                <li><Link href="/privacy#what-we-collect" className="text-sm text-text-secondary hover:text-text-primary transition-colors">Cookie Policy</Link></li>
               </ul>
             </div>
           </div>

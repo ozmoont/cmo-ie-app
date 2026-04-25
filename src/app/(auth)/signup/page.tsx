@@ -111,7 +111,21 @@ export default async function SignupPage({
           </p>
 
           <p className="text-xs text-text-muted pt-4 border-t border-border">
-            By signing up, you agree to our Terms of Service. No credit card required.
+            By signing up, you agree to our{" "}
+            <Link
+              href="/terms"
+              className="text-text-primary underline underline-offset-4"
+            >
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/privacy"
+              className="text-text-primary underline underline-offset-4"
+            >
+              Privacy Policy
+            </Link>
+            . No credit card required.
           </p>
         </div>
       </main>
