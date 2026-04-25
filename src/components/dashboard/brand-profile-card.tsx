@@ -19,7 +19,7 @@
  *     nudging the user to review before trusting the suggestions.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,7 @@ import {
   Plus,
   X,
   RefreshCw,
+  ArrowDown,
 } from "lucide-react";
 
 interface ProductService {
@@ -72,6 +73,22 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Ref on the first input so we can auto-focus + scroll into view
+  // when extraction fails. The user lands on the page and we want the
+  // cursor blinking in the first field they need to fill.
+  const firstFieldRef = useRef<HTMLInputElement | null>(null);
+  const scrollToForm = () => {
+    if (firstFieldRef.current) {
+      firstFieldRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      // Slight delay before focus — let scroll start, then focus the
+      // input so the keyboard / caret appears in view.
+      setTimeout(() => firstFieldRef.current?.focus(), 250);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -88,7 +105,12 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
         // When the profile was just auto-extracted OR extraction
         // failed outright, open the editor so the user is prompted to
         // review or fill in before generating anything.
-        if (data.auto_extracted || data.extraction_failed) setEditing(true);
+        if (data.auto_extracted || data.extraction_failed) {
+          setEditing(true);
+          // Small delay so the form has rendered before we try to
+          // scroll/focus its first field.
+          setTimeout(() => scrollToForm(), 150);
+        }
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Load failed");
@@ -244,22 +266,56 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
         )}
       </div>
 
-      {/* Extraction-failed warning (takes precedence over auto-extracted) */}
+      {/* Extraction-failed warning (takes precedence over auto-extracted).
+          The user has just landed on the page after onboarding and seen
+          this card replace the auto-fill flow they expected. We owe them
+          three things:
+            1. Why the auto-fill didn't work (concrete reasons, not vague)
+            2. What to do instead (4 fields, 2 minutes)
+            3. A button that takes them straight to the form
+          The form below is already opened in editing mode by the fetch
+          effect, and we auto-scroll to it so the cursor is in the first
+          input by the time they read this. */}
       {extractionFailed && !autoExtracted && (
-        <div className="px-6 py-3 bg-danger/5 border-b border-danger/30 flex items-start gap-3">
+        <div className="px-6 py-4 bg-danger/5 border-b border-danger/30 flex items-start gap-3">
           <AlertTriangle className="h-4 w-4 text-danger mt-0.5 shrink-0" />
-          <div className="text-xs text-text-primary leading-relaxed">
-            <p className="font-semibold text-danger">
-              We couldn&apos;t auto-extract the brand profile from{" "}
-              {websiteUrl ?? "your site"}.
+          <div className="text-xs text-text-primary leading-relaxed flex-1">
+            <p className="font-semibold text-danger text-sm">
+              We couldn&apos;t auto-fill from{" "}
+              <span className="font-mono">{websiteUrl ?? "your site"}</span>
             </p>
-            <p className="text-text-secondary mt-1">
-              Your site likely blocks bot fetches (Cloudflare / Webflow
-              protection) or serves content via JavaScript with no
-              server-rendered HTML. Fill in the fields below manually —
-              it&apos;s faster than unblocking a bot, and the profile only
-              needs to be done once per project.
+            <p className="text-text-secondary mt-2">
+              The most common reasons sites block our fetch:
             </p>
+            <ul className="mt-1.5 ml-4 list-disc text-text-secondary space-y-0.5">
+              <li>
+                Cloudflare / Webflow / Framer bot protection blocked the
+                request (most common — happens to ~40% of sites)
+              </li>
+              <li>
+                The site renders content via JavaScript and has no
+                server-side HTML for us to read
+              </li>
+              <li>
+                The page returned an empty body or a placeholder/redirect
+              </li>
+            </ul>
+            <p className="text-text-secondary mt-3">
+              No problem — fill the four fields below. It takes ~2 minutes
+              and only needs to be done once per project. Your project sits
+              in a holding state until this is saved; afterwards everything
+              (prompt suggestions, action plans, briefs) personalises off
+              this profile.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={scrollToForm}
+              className="mt-3"
+            >
+              <ArrowDown className="h-3.5 w-3.5 mr-1.5" />
+              Take me to the form
+            </Button>
           </div>
         </div>
       )}
@@ -297,25 +353,30 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
               label="What the brand does (1–2 sentences)"
               value={profile.short_description}
               onChange={(v) => updateField("short_description", v)}
-              placeholder="Dublin-based digital and AI transformation agency helping mid-sized Irish companies…"
+              placeholder="One sentence describing what your business does and who for…"
+              helperText="Plain-English summary — what you'd say in an elevator pitch. Examples: 'Specialist energy consultancy helping Irish SMEs cut energy costs.' / 'Dublin-based digital agency for mid-market companies.' / 'Boutique law firm specialising in commercial property in Cork.'"
+              inputRef={firstFieldRef}
             />
             <Field
               label="Market segment"
               value={profile.market_segment}
               onChange={(v) => updateField("market_segment", v)}
-              placeholder="Digital / AI transformation consulting for Irish mid-market"
+              placeholder="Industry + positioning"
+              helperText="Your sector + tier you operate in. Examples: 'Energy consultancy for commercial sector', 'Digital transformation for mid-market', 'Boutique commercial law', 'Independent food & drink retailer'."
             />
             <Field
               label="Brand identity / positioning"
               value={profile.brand_identity}
               onChange={(v) => updateField("brand_identity", v)}
-              placeholder="Challenger agency with C-level operational experience"
+              placeholder="Tone + credibility cues"
+              helperText="How customers describe you, or how you'd want to be described. Examples: 'Trusted, results-driven, 20+ years in the Irish market', 'Challenger agency with senior-level experience', 'Family-run, locally rooted, premium quality'."
             />
             <Field
               label="Target audience"
               value={profile.target_audience}
               onChange={(v) => updateField("target_audience", v)}
-              placeholder="Scale-ups and mid-sized Irish companies (50–500 staff)"
+              placeholder="Who buys"
+              helperText="The people or businesses who actually buy from you. Examples: 'Facilities managers at mid-sized Irish manufacturers', 'Marketing directors at Dublin SaaS scale-ups (50–500 staff)', 'Homeowners aged 35–55 in Munster'."
             />
 
             <div>
@@ -447,11 +508,17 @@ function Field({
   value,
   onChange,
   placeholder,
+  helperText,
+  inputRef,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /** Short example/guidance line under the input. Industry-agnostic. */
+  helperText?: string;
+  /** Ref forwarded to the underlying input. Used for auto-focus. */
+  inputRef?: React.Ref<HTMLInputElement>;
 }) {
   return (
     <div>
@@ -459,11 +526,17 @@ function Field({
         {label}
       </Label>
       <Input
+        ref={inputRef}
         className="mt-2 text-sm"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
       />
+      {helperText && (
+        <p className="mt-1.5 text-xs text-text-muted leading-relaxed">
+          {helperText}
+        </p>
+      )}
     </div>
   );
 }
