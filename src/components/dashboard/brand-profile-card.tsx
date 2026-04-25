@@ -221,7 +221,10 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
   const hasData = profile.short_description.trim().length > 0;
 
   return (
-    <section className="border border-border rounded-lg">
+    <section
+      id="brand-profile"
+      className="border border-border rounded-lg scroll-mt-24"
+    >
       {/* Header */}
       <div className="px-6 py-4 border-b border-border flex items-start justify-between gap-4 flex-wrap">
         <div>

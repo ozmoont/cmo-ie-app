@@ -578,9 +578,9 @@ export default function ActionsPage() {
         <div className="mt-6 grid grid-cols-12 gap-6">
           <div className="col-span-12 md:col-span-9 md:col-start-4 flex items-start gap-3 text-danger">
             <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-            <div>
+            <div className="flex-1">
               <p className="font-semibold">Generation failed.</p>
-              <p className="text-sm text-text-secondary mt-1">{error}</p>
+              <ErrorBody message={error} projectId={projectId} />
             </div>
           </div>
         </div>
@@ -613,9 +613,7 @@ export default function ActionsPage() {
             Generation failed
           </p>
           <div className="col-span-12 md:col-span-9 max-w-2xl">
-            <p className="text-sm text-text-primary leading-relaxed">
-              {planFailureMessage}
-            </p>
+            <ErrorBody message={planFailureMessage} projectId={projectId} />
             <p className="mt-3 text-xs text-text-secondary">
               Click &quot;Regenerate action plan&quot; above to retry. The
               failed attempt stays in history so you can see what went
@@ -1102,5 +1100,43 @@ export default function ActionsPage() {
         </div>
       )}
     </DashboardShell>
+  );
+}
+
+/**
+ * Renders an action-plan error message with an inline action button
+ * when the message indicates a missing brand profile. Cheap pattern
+ * match: if the API/DB error string mentions "brand profile" we
+ * surface a "Go to Brand Profile" link to the editor location, with
+ * the URL hash anchor that auto-scrolls the user to the card on
+ * arrival. For any other error, falls through to plain text.
+ *
+ * Why a string-match instead of a structured error code: the action
+ * plan generator is two layers away (API route → background task →
+ * action_plans.status_message). Threading a code field would touch
+ * three files. Pattern-matching here is uglier but contained — and
+ * one match is all we have.
+ */
+function ErrorBody({
+  message,
+  projectId,
+}: {
+  message: string;
+  projectId: string;
+}) {
+  const isBrandProfileError = /brand profile/i.test(message);
+  return (
+    <div>
+      <p className="text-sm text-text-primary leading-relaxed">{message}</p>
+      {isBrandProfileError && (
+        <Link
+          href={`/projects/${projectId}/prompts#brand-profile`}
+          className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-emerald-dark hover:text-emerald-dark/80 underline underline-offset-4"
+        >
+          Go to Brand Profile
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      )}
+    </div>
   );
 }
