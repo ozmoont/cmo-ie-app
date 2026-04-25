@@ -71,6 +71,7 @@ export async function GET() {
         NEXT_PUBLIC_STRIPE_PRICE_ADVANCED: envStatus(
           "NEXT_PUBLIC_STRIPE_PRICE_ADVANCED"
         ),
+        NEXT_PUBLIC_APP_URL: envStatus("NEXT_PUBLIC_APP_URL"),
         CMO_ADMIN_EMAILS: envStatus("CMO_ADMIN_EMAILS"),
       },
     },
