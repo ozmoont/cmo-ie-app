@@ -38,7 +38,7 @@ import { RunTrigger } from "@/components/dashboard/run-trigger";
 import { RecentChats } from "@/components/dashboard/recent-chats";
 import { BlurGate } from "@/components/dashboard/blur-gate";
 import { DrilldownLabel } from "@/components/dashboard/drilldown-label";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, AlertTriangle } from "lucide-react";
 import type { Metadata } from "next";
 
 // Per-project page title so browser tabs and share cards carry the brand name.
@@ -239,6 +239,38 @@ export default async function ProjectDashboard({
           )}
         </div>
       </header>
+
+      {/* ── Empty brand profile nudge ──
+          Every personalisation feature reads from profile_short_description.
+          When it's empty, action plan generation 400s and prompt suggestions
+          hallucinate. Surface a loud nudge so the user fills it before
+          hitting Generate. Hidden once the profile has anything in it
+          (the Brand tab handles further refinement). */}
+      {(!project.profile_short_description ||
+        !project.profile_short_description.trim()) && (
+        <div className="mt-6 mb-2 rounded-lg border border-warning/30 bg-warning/5 px-5 py-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-text-primary">
+              Brand profile incomplete — finish setup before generating
+              anything.
+            </p>
+            <p className="mt-1 text-sm text-text-secondary leading-relaxed">
+              Prompt suggestions, action plans, briefs and drafts all read
+              from your brand profile. Until it&apos;s filled in, every
+              output defaults to generic-industry advice — fine for testing,
+              wrong for your customers. Takes ~2 minutes.
+            </p>
+            <Link
+              href={`/projects/${projectId}/brand`}
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-emerald-dark hover:text-emerald-dark/80 underline underline-offset-4"
+            >
+              Complete brand profile
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ── First-run teach block ── editorial, no card, no icon-in-circle.
           Shown only when no runs have ever completed. */}

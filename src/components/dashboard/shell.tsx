@@ -17,6 +17,7 @@ import {
   Globe,
   Target,
   Download,
+  IdCard,
 } from "lucide-react";
 
 interface DashboardShellProps {
@@ -35,6 +36,12 @@ const mainNav = [
 function projectNav(id: string) {
   return [
     { label: "Overview", href: `/projects/${id}`, icon: BarChart3 },
+    // "Brand" sits second so it's a permanent, obvious place to edit
+    // the brand profile. Every downstream feature (suggestions, action
+    // plans, briefs) reads from this profile, so making it a first-
+    // class destination prevents the "where do I edit my brand"
+    // wandering we saw in early testing.
+    { label: "Brand", href: `/projects/${id}/brand`, icon: IdCard },
     { label: "Insights", href: `/projects/${id}/insights`, icon: Search },
     { label: "Sources", href: `/projects/${id}/sources`, icon: Globe },
     { label: "Gaps", href: `/projects/${id}/gaps`, icon: Target },

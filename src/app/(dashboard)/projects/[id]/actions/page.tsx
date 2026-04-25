@@ -1130,7 +1130,7 @@ function ErrorBody({
       <p className="text-sm text-text-primary leading-relaxed">{message}</p>
       {isBrandProfileError && (
         <Link
-          href={`/projects/${projectId}/prompts#brand-profile`}
+          href={`/projects/${projectId}/brand`}
           className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-emerald-dark hover:text-emerald-dark/80 underline underline-offset-4"
         >
           Go to Brand Profile

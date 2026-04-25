@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { CATEGORY_LABELS } from "@/lib/types";
 import type { Prompt, PromptCategory } from "@/lib/types";
 import { LoadingPhrases } from "@/components/ui/loading-phrases";
-import { BrandProfileCard } from "@/components/dashboard/brand-profile-card";
 import {
   Plus,
   Trash2,
@@ -216,17 +215,11 @@ export default function PromptsPage() {
         </div>
       </header>
 
-      {/* ── Brand profile — authoritative context for every suggestion ── */}
-      {/* Renders first so the user can see (and correct) what Claude thinks the brand is BEFORE trusting anything else on this page. */}
-      <div className="mt-8 mb-10">
-        <BrandProfileCard
-          projectId={projectId}
-          onSaved={() => {
-            // User just corrected the profile — re-run suggestions so they reflect the fix.
-            fetchSuggestions();
-          }}
-        />
-      </div>
+      {/* Brand profile editing moved to its own /projects/[id]/brand
+          tab so it's discoverable from the project nav rather than
+          buried under Prompts. The Brand tab calls fetchSuggestions
+          via its own onSaved callback when relevant; no need to wire
+          it from here. */}
 
       {prompts.length > 0 && prompts.length < 5 && (
         <p className="mb-6 text-sm text-warning max-w-2xl">
