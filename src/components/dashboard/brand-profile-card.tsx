@@ -31,7 +31,6 @@ import {
   Plus,
   X,
   RefreshCw,
-  ArrowDown,
 } from "lucide-react";
 
 interface ProductService {
@@ -137,6 +136,14 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
       setProfile(data.profile ?? profile);
       setUpdatedAt(data.profile_updated_at ?? null);
       setAutoExtracted(false);
+      // The user has manually filled in the profile — the original
+      // auto-extraction failure is no longer relevant. Clearing the
+      // flag hides the "We couldn't auto-fill from <site>" banner so
+      // the user doesn't keep seeing a stale error after they've
+      // already addressed it. The DB column extraction_failed stays
+      // as historical record; we just don't surface it once content
+      // exists.
+      setExtractionFailed(false);
       setEditing(false);
       onSaved?.();
     } catch (err) {
@@ -310,15 +317,6 @@ export function BrandProfileCard({ projectId, onSaved }: BrandProfileCardProps) 
               (prompt suggestions, action plans, briefs) personalises off
               this profile.
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={scrollToForm}
-              className="mt-3"
-            >
-              <ArrowDown className="h-3.5 w-3.5 mr-1.5" />
-              Take me to the form
-            </Button>
           </div>
         </div>
       )}

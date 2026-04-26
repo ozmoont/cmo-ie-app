@@ -30,12 +30,17 @@ export function getStripe(): Stripe {
 
 export type Plan = "trial" | "starter" | "pro" | "advanced" | "agency";
 
+// Price IDs live under NEXT_PUBLIC_* so the client-side pricing cards
+// (src/components/dashboard/pricing-cards.tsx) can read them directly
+// when building the Stripe checkout URL. Price IDs are not secret —
+// Stripe exposes them in the checkout redirect anyway — so the public
+// prefix is safe and avoids having two env vars per plan.
 export function mapPriceToPlan(priceId: string): Plan {
   const mapping: Record<string, Plan> = {
-    [process.env.STRIPE_PRICE_STARTER!]: "starter",
-    [process.env.STRIPE_PRICE_PRO!]: "pro",
-    [process.env.STRIPE_PRICE_ADVANCED!]: "advanced",
-    [process.env.STRIPE_PRICE_AGENCY!]: "agency",
+    [process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER!]: "starter",
+    [process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO!]: "pro",
+    [process.env.NEXT_PUBLIC_STRIPE_PRICE_ADVANCED!]: "advanced",
+    [process.env.NEXT_PUBLIC_STRIPE_PRICE_AGENCY!]: "agency",
   };
 
   return mapping[priceId] ?? "trial";
@@ -45,10 +50,10 @@ export function getPriceIdForPlan(plan: Plan): string | null {
   if (plan === "trial") return null;
 
   const mapping: Record<Plan, string> = {
-    starter: process.env.STRIPE_PRICE_STARTER!,
-    pro: process.env.STRIPE_PRICE_PRO!,
-    advanced: process.env.STRIPE_PRICE_ADVANCED!,
-    agency: process.env.STRIPE_PRICE_AGENCY!,
+    starter: process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER!,
+    pro: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO!,
+    advanced: process.env.NEXT_PUBLIC_STRIPE_PRICE_ADVANCED!,
+    agency: process.env.NEXT_PUBLIC_STRIPE_PRICE_AGENCY!,
     trial: "",
   };
 
