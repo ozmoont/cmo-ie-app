@@ -162,6 +162,13 @@ export async function runSeoAudit(auditId: string): Promise<void> {
     // at the homepage + a few key inner pages + competitor SERPs.
     // At ~$0.01/call this caps the surcharge at ~$0.08 per audit on
     // top of token cost.
+    //
+    // Note: `user_location` is intentionally omitted. Anthropic's
+    // web_search tool doesn't accept "IE" (returns 400 at request
+    // time — see SUPPORTED_WEB_SEARCH_COUNTRIES in models/anthropic.ts
+    // for the allow-list). The skill's system prompt already tells
+    // Claude this is an Irish-market audit, so the locale hint is
+    // belt-and-braces we don't need.
     const response = await client.messages.create({
       model: SONNET_MODEL,
       max_tokens: MAX_OUTPUT_TOKENS,
@@ -170,7 +177,6 @@ export async function runSeoAudit(auditId: string): Promise<void> {
         {
           type: "web_search_20250305",
           name: "web_search",
-          user_location: { type: "approximate", country: "IE" },
           max_uses: 8,
         },
       ],
