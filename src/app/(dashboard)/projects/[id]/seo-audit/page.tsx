@@ -303,42 +303,58 @@ export default function SeoAuditPage() {
       {/* ── In-flight audit thinking UI ── */}
       {/* When activeAuditId is set, the user just clicked Run audit
           and the pipeline is firing. We hide the eligibility CTA and
-          show a progress card with rotating SEO-themed phrases + the
-          server-reported step + a progress bar. */}
+          show a progress card with the server-reported step + a real
+          progress bar. If the server hasn't written any progress yet
+          (row still pending), we show an indeterminate pulse instead
+          of faking a percentage — faking it caused a confusing
+          looping bar that suggested the run was restarting. */}
       {activeAuditId && (
         <section className="mt-8 mb-10 rounded-lg border border-emerald-dark/30 bg-emerald-dark/5 p-6">
           <div className="flex items-start gap-3">
             <Loader2 className="h-5 w-5 text-emerald-dark mt-0.5 shrink-0 animate-spin" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-text-primary">
-                {activeAudit?.progress_step ?? SEO_THINKING_PHRASES[phraseIdx]}
+                {activeAudit?.progress_step ??
+                  (activeAudit?.status === "pending"
+                    ? "Queued — starting up…"
+                    : SEO_THINKING_PHRASES[phraseIdx])}
               </p>
               <p className="mt-1 text-sm text-text-secondary leading-relaxed">
                 Running the 9-phase Howl.ie SEO audit on{" "}
                 <span className="font-mono text-xs">
                   {hostnameOf(activeAudit?.site_url ?? websiteUrl ?? "")}
                 </span>
-                . Takes 60-90 seconds. You can close this tab — the
-                audit keeps running and you&apos;ll see it in the list
-                when you come back.
+                . Takes 60-120 seconds — Claude crawls your site, runs
+                PageSpeed Insights, and writes up the report. Safe to
+                close this tab; the audit keeps running and shows up in
+                the list when it&apos;s done.
               </p>
-              {/* Progress bar — uses the server's progress_percent
-                  when available, falls back to an indeterminate
-                  pulse-like bar based on the rotating phrase index. */}
+              {/* Progress bar — uses the server's real progress_percent
+                  when we have one. When the server hasn't written
+                  progress yet, we render an indeterminate "shimmer"
+                  bar so users don't see a faux-progress that loops. */}
               <div className="mt-4 h-1.5 w-full bg-emerald-dark/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-dark transition-all duration-700 ease-out"
-                  style={{
-                    width: `${
-                      activeAudit?.progress_percent ??
-                      Math.min(
-                        90,
-                        ((phraseIdx + 1) / SEO_THINKING_PHRASES.length) * 100
-                      )
-                    }%`,
+                {typeof activeAudit?.progress_percent === "number" ? (
+                  <div
+                    className="h-full bg-emerald-dark transition-all duration-700 ease-out"
+                    style={{ width: `${activeAudit.progress_percent}%` }}
+                  />
+                ) : (
+                  <div className="h-full w-1/3 bg-emerald-dark/70 rounded-full animate-pulse" />
+                )}
+              </div>
+              {/* Stuck-state escape hatch. After 60s without any
+                  progress write from the server, we surface a hint
+                  that something's wrong and let the user bail out. */}
+              {activeAudit?.status === "pending" && (
+                <StuckHint
+                  createdAt={activeAudit.created_at}
+                  onCancel={() => {
+                    setActiveAuditId(null);
+                    setActiveAudit(null);
                   }}
                 />
-              </div>
+              )}
             </div>
           </div>
         </section>
@@ -511,6 +527,53 @@ export default function SeoAuditPage() {
         )}
       </section>
     </DashboardShell>
+  );
+}
+
+/**
+ * Renders a "looks stuck" warning + cancel link when an audit row has
+ * been sitting in 'pending' (no progress writes) for more than 60s.
+ * This is the user's escape hatch when the run lambda dies before
+ * setProgress() can fire — without this, the UI would just sit there
+ * forever pretending progress is being made.
+ */
+function StuckHint({
+  createdAt,
+  onCancel,
+}: {
+  createdAt: string;
+  onCancel: () => void;
+}) {
+  const [isStuck, setIsStuck] = useState(false);
+  useEffect(() => {
+    // Recompute every 5s. If the row was created more than 60s ago and
+    // still has no progress, it's almost certainly an orphaned run.
+    const check = () => {
+      const ageMs = Date.now() - new Date(createdAt).getTime();
+      setIsStuck(ageMs > 60_000);
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
+  }, [createdAt]);
+  if (!isStuck) return null;
+  return (
+    <div className="mt-4 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs text-text-secondary leading-relaxed">
+      <p className="font-medium text-warning">
+        This is taking longer than expected.
+      </p>
+      <p className="mt-1">
+        The run lambda may have died before it could write progress.
+        Common causes: Vercel maxDuration not yet redeployed, or the
+        Anthropic / PageSpeed API key is missing on the server.
+      </p>
+      <button
+        onClick={onCancel}
+        className="mt-2 text-xs font-medium text-emerald-dark hover:text-emerald-dark/80 underline underline-offset-4"
+      >
+        Stop watching this run
+      </button>
+    </div>
   );
 }
 
