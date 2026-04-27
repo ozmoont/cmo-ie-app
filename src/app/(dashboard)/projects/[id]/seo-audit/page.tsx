@@ -109,9 +109,21 @@ export default function SeoAuditPage() {
     const res = await fetch(`/api/projects/${projectId}/seo-audits`);
     if (res.ok) {
       const data = await res.json();
-      setAudits(data.audits ?? []);
+      const list = (data.audits ?? []) as Audit[];
+      setAudits(list);
       setEligibility(data.eligibility);
       setWebsiteUrl(data.project?.website_url ?? null);
+
+      // Resume the thinking UI if there's an audit still in flight.
+      // Without this, refreshing during a generating run would hide
+      // the progress bar and leave the user staring at a "Queued"
+      // badge with no feedback.
+      const inFlight = list.find(
+        (a) => a.status === "pending" || a.status === "generating"
+      );
+      if (inFlight) {
+        setActiveAuditId((current) => current ?? inFlight.id);
+      }
     }
     setLoading(false);
   }, [projectId]);
@@ -394,11 +406,13 @@ export default function SeoAuditPage() {
                           </>
                         )}
                       </p>
-                      {a.status === "failed" && a.error_message && (
-                        <p className="text-xs text-danger mt-1">
-                          {a.error_message}
-                        </p>
-                      )}
+                      {(a.status === "failed" ||
+                        a.status === "unavailable") &&
+                        a.error_message && (
+                          <p className="text-xs text-danger mt-1">
+                            {a.error_message}
+                          </p>
+                        )}
                     </div>
                   </div>
                   <div className="shrink-0">
@@ -419,8 +433,9 @@ export default function SeoAuditPage() {
                         />
                       </button>
                     ) : a.status === "pending" || a.status === "generating" ? (
-                      <span className="text-xs text-text-muted">
-                        Processing…
+                      <span className="text-xs text-text-muted inline-flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {a.progress_step ?? "Processing…"}
                       </span>
                     ) : null}
                   </div>
