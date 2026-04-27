@@ -26,6 +26,7 @@ import {
   Loader2,
   ArrowRight,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 
 // Rotating thinking phrases shown while an audit is generating.
@@ -104,6 +105,9 @@ export default function SeoAuditPage() {
   // Which past audit's report is expanded inline. Click a row to toggle.
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Per-row deletion state — disables the trash button while the
+  // request is in flight and avoids double-deletes from rapid clicks.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}/seo-audits`);
@@ -184,6 +188,51 @@ export default function SeoAuditPage() {
     }, 2500);
     return () => clearInterval(id);
   }, [activeAuditId]);
+
+  // Delete an audit row. Optimistically removes from the list so the
+  // UI feels instant; rolls back on server error.
+  const deleteAudit = async (auditId: string) => {
+    if (deletingId) return; // de-dupe rapid clicks
+    if (
+      !window.confirm(
+        "Delete this audit? This removes the row and any generated report — this can't be undone."
+      )
+    ) {
+      return;
+    }
+    setDeletingId(auditId);
+    const previous = audits;
+    setAudits((list) => list.filter((a) => a.id !== auditId));
+    // If the deleted audit was expanded or in flight, close those.
+    setExpandedAuditId((id) => (id === auditId ? null : id));
+    if (activeAuditId === auditId) {
+      setActiveAuditId(null);
+      setActiveAudit(null);
+    }
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/seo-audits/${auditId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        // Roll back on failure so the user knows it didn't go through.
+        setAudits(previous);
+        const data = await res.json().catch(() => ({}));
+        setActionState({
+          kind: "error",
+          message: data.error ?? `Delete failed (HTTP ${res.status})`,
+        });
+      }
+    } catch (err) {
+      setAudits(previous);
+      setActionState({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Network error",
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const runFreeAudit = async () => {
     setActionState({ kind: "running" });
@@ -415,7 +464,7 @@ export default function SeoAuditPage() {
                         )}
                     </div>
                   </div>
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex items-center gap-3">
                     {a.status === "complete" ? (
                       <button
                         onClick={() =>
@@ -438,6 +487,19 @@ export default function SeoAuditPage() {
                         {a.progress_step ?? "Processing…"}
                       </span>
                     ) : null}
+                    <button
+                      onClick={() => deleteAudit(a.id)}
+                      disabled={deletingId === a.id}
+                      title="Delete audit"
+                      aria-label="Delete audit"
+                      className="text-text-muted hover:text-danger transition-colors p-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {deletingId === a.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
                 {expandedAuditId === a.id && (
