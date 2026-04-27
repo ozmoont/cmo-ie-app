@@ -229,6 +229,18 @@ export const PLAN_LIMITS: Record<
     actionTier: "gaps" | "strategy" | "full";
     briefCredits: number;
     blurResults: boolean; // if true, show 1 result clear + blur the rest
+    /**
+     * Free SEO audits included with the plan, per org per month.
+     * 0 = customer must pay €49 every time. >0 = first N each calendar
+     * month are free, additional ones cost €49. Infinity = unlimited
+     * (not currently used; kept for symmetry with other quota fields).
+     *
+     * Agency tier semantics: this is the per-org pool, NOT per-client.
+     * Each agency project's eligibility is computed against the org-level
+     * count divided by active client projects (matches the brief credits
+     * pattern in lib/queries.getOrgBriefCredits).
+     */
+    seoAuditsIncluded: number;
   }
 > = {
   trial: {
@@ -241,6 +253,7 @@ export const PLAN_LIMITS: Record<
     actionTier: "gaps",
     briefCredits: 0,
     blurResults: true,
+    seoAuditsIncluded: 0, // pay €49 each
   },
   // Starter — €249/mo. 25 prompts × 2 models × 4 runs/mo = 200
   // checks, target spend ~€40/mo, target margin ~€200.
@@ -254,6 +267,7 @@ export const PLAN_LIMITS: Record<
     actionTier: "gaps",
     briefCredits: 5,
     blurResults: false,
+    seoAuditsIncluded: 0, // pay €49 each — upsell driver to Pro
   },
   // Pro — €499/mo. 50 prompts × 4 models × 30 runs/mo = 6,000 checks,
   // target spend ~€100/mo with Haiku runs, margin ~€400.
@@ -267,6 +281,7 @@ export const PLAN_LIMITS: Record<
     actionTier: "strategy",
     briefCredits: 20,
     blurResults: false,
+    seoAuditsIncluded: 1, // 1 free per month, additional ones €49
   },
   // Advanced — €999/mo. Unlimited prompts + runs. Expected shape:
   // ~100 prompts × 5 models × 30 runs = 15k checks, ~€200/mo spend,
@@ -281,6 +296,7 @@ export const PLAN_LIMITS: Record<
     actionTier: "full",
     briefCredits: 50,
     blurResults: false,
+    seoAuditsIncluded: 3, // 3 free per month, additional ones €49
   },
   // Agency — €999-€2499/mo. BYOK-preferred so Anthropic/OpenAI spend
   // is on the customer's keys; the pool is for briefs + our managed
@@ -296,6 +312,11 @@ export const PLAN_LIMITS: Record<
     actionTier: "full",
     briefCredits: 100,
     blurResults: false,
+    // Agency: 1 audit per active client project per month. Computed
+    // dynamically inside lib/seo-audit/eligibility (the constant here
+    // is the per-project allowance; the helper multiplies by active
+    // client projects to get the org-level allowance).
+    seoAuditsIncluded: 1,
   },
 };
 

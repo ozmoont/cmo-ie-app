@@ -18,6 +18,7 @@ import {
   Target,
   Download,
   IdCard,
+  ScanSearch,
 } from "lucide-react";
 
 interface DashboardShellProps {
@@ -48,6 +49,10 @@ function projectNav(id: string) {
     { label: "Prompts", href: `/projects/${id}/prompts`, icon: MessageSquare },
     { label: "Competitors", href: `/projects/${id}/competitors`, icon: Users },
     { label: "Actions", href: `/projects/${id}/actions`, icon: Zap },
+    // "SEO" sits at the end as a paid add-on rather than a core tab.
+    // It's a separate product (Howl.ie SEO Auditor skill) priced per
+    // audit; pro/advanced plans get N free per month, others pay €49.
+    { label: "SEO", href: `/projects/${id}/seo-audit`, icon: ScanSearch },
   ];
 }
 
