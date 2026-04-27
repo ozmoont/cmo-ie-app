@@ -16,7 +16,7 @@
  *      processing" without 500ing.
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSeoAuditEligibility } from "@/lib/seo-audit/eligibility";
@@ -25,6 +25,11 @@ import type { Organisation } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// runSeoAudit needs ~60-180s (PSI + Sonnet web_search + observer pass).
+// Without this, Vercel reaps the lambda the moment we return the
+// audit row to the client, killing the background work mid-flight.
+// The 300s budget here matches vercel.json's maxDuration override.
+export const maxDuration = 300;
 
 interface ProjectRow {
   id: string;
@@ -187,12 +192,20 @@ export async function POST(
     );
   }
 
-  // Fire-and-forget the run pipeline. The user's POST returns
-  // immediately with the pending row; the page polls for status
-  // changes as the run progresses. Errors are persisted on the row
-  // (status='failed' / 'unavailable') so the UI can surface them.
-  void runSeoAudit(audit.id).catch((err) => {
-    console.error(`[seo-audit ${audit.id}] background run failed:`, err);
+  // Schedule the run pipeline AFTER the response is sent. `after()`
+  // keeps the lambda alive (up to maxDuration) so the background
+  // work actually executes, instead of getting reaped the instant we
+  // call NextResponse.json below. A bare `void runSeoAudit()` would
+  // be killed in milliseconds on Vercel — that was the cause of every
+  // audit getting stuck on 'pending' with no progress writes.
+  // Errors are persisted on the row (status='failed' / 'unavailable')
+  // so the UI can surface them.
+  after(async () => {
+    try {
+      await runSeoAudit(audit.id);
+    } catch (err) {
+      console.error(`[seo-audit ${audit.id}] background run failed:`, err);
+    }
   });
 
   return NextResponse.json({ ok: true, audit });
