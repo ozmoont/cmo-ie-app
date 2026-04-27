@@ -18,6 +18,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/shell";
 import { Button } from "@/components/ui/button";
+import { MarkdownReport } from "@/components/markdown-report";
 import {
   ScanSearch,
   Sparkles,
@@ -696,11 +697,11 @@ function ExpandedReport({
             </ul>
           </div>
         )}
-      {/* Markdown body. Plain pre for now; we can swap in a markdown
-          renderer (react-markdown) in a follow-up. */}
-      <pre className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap font-sans">
-        {audit.report_markdown}
-      </pre>
+      {/* Markdown body — full GFM support (tables, task lists, etc.)
+          via MarkdownReport. The audit emits headings, tables, lists,
+          and the occasional inline code block; the renderer styles
+          them all to the CMO.ie design system. */}
+      <MarkdownReport>{audit.report_markdown}</MarkdownReport>
     </div>
   );
 }
