@@ -84,27 +84,30 @@ export async function runSeoAudit(auditId: string): Promise<void> {
   await setProgress(admin, auditId, "generating", "Starting audit…", 5);
 
   // ── Step 1: Site snapshot ────────────────────────────────────
+  // We try to fetch a snapshot, but treat a thin/missing snapshot as
+  // a soft signal — not a fatal. Webflow / Cloudflare / Framer /
+  // Vercel-protected sites often return < 200 chars to a server fetch
+  // even when they're perfectly indexable by Google. Bailing here was
+  // failing real audits unnecessarily. Instead we hand Claude the
+  // snapshot we DO have (even if empty) plus the live URL, and rely on
+  // its web_search tool to fill the gap.
   await setProgress(admin, auditId, "generating", "Fetching site content…", 15);
-  let siteSnapshot: string | null;
+  let siteSnapshot: string | null = null;
   try {
     siteSnapshot = await fetchSiteSnapshot(audit.site_url);
   } catch (err) {
-    await failAudit(
-      admin,
-      auditId,
-      "unavailable",
-      `Couldn't fetch ${audit.site_url}: ${err instanceof Error ? err.message : "unknown error"}. Site may be blocking crawlers.`
+    // Even a hard fetch error shouldn't kill the audit — Claude can
+    // still crawl with web_search. Just note the failure for the prompt.
+    console.warn(
+      `[seo-audit ${auditId}] snapshot fetch failed (non-fatal):`,
+      err instanceof Error ? err.message : err
     );
-    return;
   }
-  if (!siteSnapshot || siteSnapshot.length < 200) {
-    await failAudit(
-      admin,
-      auditId,
-      "unavailable",
-      `Site returned no usable content. Likely Cloudflare/Webflow bot protection or a JS-only render with no server HTML.`
+  const snapshotIsThin = !siteSnapshot || siteSnapshot.length < 200;
+  if (snapshotIsThin) {
+    console.info(
+      `[seo-audit ${auditId}] snapshot thin (${siteSnapshot?.length ?? 0} chars) — Claude will crawl via web_search`
     );
-    return;
   }
 
   // ── Step 2: PageSpeed Insights ────────────────────────────────
@@ -145,6 +148,7 @@ export async function runSeoAudit(auditId: string): Promise<void> {
   const userMessage = buildAuditPrompt({
     siteUrl: audit.site_url,
     siteSnapshot,
+    snapshotIsThin,
     psi,
     auditId,
   });
@@ -152,17 +156,43 @@ export async function runSeoAudit(auditId: string): Promise<void> {
   const sonnetStartedAt = Date.now();
   let assistantText: string;
   try {
+    // Web search lets Claude crawl the live site itself. Critical for
+    // Webflow / Cloudflare / SPA sites where our server-side snapshot
+    // came back thin. Cap at 8 calls — a 9-phase audit needs to look
+    // at the homepage + a few key inner pages + competitor SERPs.
+    // At ~$0.01/call this caps the surcharge at ~$0.08 per audit on
+    // top of token cost.
     const response = await client.messages.create({
       model: SONNET_MODEL,
       max_tokens: MAX_OUTPUT_TOKENS,
       system: skill.skill_md,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+          user_location: { type: "approximate", country: "IE" },
+          max_uses: 8,
+        },
+      ],
       messages: [{ role: "user", content: userMessage }],
     });
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
+    // Concatenate ALL text blocks — when web_search is enabled Claude
+    // emits multiple text blocks interleaved with tool_use /
+    // tool_result blocks. Picking just the first one drops 80% of the
+    // report.
+    const textBlocks = response.content.filter((b) => b.type === "text");
+    if (textBlocks.length === 0) {
       throw new Error("Claude returned no text content");
     }
-    assistantText = textBlock.text;
+    assistantText = textBlocks
+      .map((b) => (b.type === "text" ? b.text : ""))
+      .join("\n\n")
+      .trim();
+
+    // Count web_search invocations for cost attribution.
+    const web_search_calls = response.content.filter(
+      (b) => (b as { type?: string }).type === "server_tool_use"
+    ).length;
 
     logAiUsage({
       provider: "anthropic",
@@ -170,6 +200,7 @@ export async function runSeoAudit(auditId: string): Promise<void> {
       feature: "other",
       input_tokens: response.usage?.input_tokens ?? 0,
       output_tokens: response.usage?.output_tokens ?? 0,
+      web_search_calls,
       org_id: audit.org_id,
       project_id: audit.project_id,
       duration_ms: Date.now() - sonnetStartedAt,
@@ -295,11 +326,12 @@ async function failAudit(
  */
 function buildAuditPrompt(args: {
   siteUrl: string;
-  siteSnapshot: string;
+  siteSnapshot: string | null;
+  snapshotIsThin: boolean;
   psi: PsiResult | null;
   auditId: string;
 }): string {
-  const { siteUrl, siteSnapshot, psi, auditId } = args;
+  const { siteUrl, siteSnapshot, snapshotIsThin, psi, auditId } = args;
   const intake = {
     url: siteUrl,
     audit_type: "full",
@@ -310,9 +342,40 @@ function buildAuditPrompt(args: {
     ? `\n\nPageSpeed Insights data:\n${JSON.stringify(psi, null, 2)}`
     : "\n\nPageSpeed Insights: data unavailable (site may be blocking the Lighthouse user agent)";
 
-  // We feed the site snapshot as raw scraped text. The skill knows
-  // it's working from a snapshot and won't pretend to have access
-  // to dynamic data we didn't supply.
+  // Three states for the snapshot block:
+  //   - We have a full snapshot (>= 200 chars) → embed it
+  //   - We have a thin snapshot (< 200 chars but not null) → embed it
+  //     with a note explaining it's incomplete
+  //   - Snapshot is null (fetch threw) → tell Claude to crawl directly
+  // In ALL cases the web_search tool is available, so Claude can fill
+  // in gaps by visiting the live URL itself.
+  const snapshotBlock = (() => {
+    if (siteSnapshot && !snapshotIsThin) {
+      return [
+        "Site snapshot (server-fetched HTML, scripts/styles stripped):",
+        "```",
+        siteSnapshot.slice(0, 8000),
+        "```",
+      ].join("\n");
+    }
+    if (siteSnapshot) {
+      return [
+        "Site snapshot (PARTIAL — server fetch returned thin content,",
+        "likely Webflow/Cloudflare/Framer/SPA. Use web_search to crawl",
+        "the live site for the rest):",
+        "```",
+        siteSnapshot.slice(0, 8000),
+        "```",
+      ].join("\n");
+    }
+    return [
+      "Site snapshot: UNAVAILABLE — server-side fetch was blocked or",
+      "returned no usable HTML. Use the web_search tool to crawl the",
+      "live site (homepage + key inner pages) to get the content you",
+      "need for the audit.",
+    ].join("\n");
+  })();
+
   return [
     "Platform audit request:",
     "",
@@ -320,11 +383,16 @@ function buildAuditPrompt(args: {
     JSON.stringify(intake, null, 2),
     "```",
     "",
-    "Site snapshot (server-fetched HTML, scripts/styles stripped):",
-    "```",
-    siteSnapshot.slice(0, 8000),
-    "```",
+    snapshotBlock,
     psiBlock,
+    "",
+    "You have the web_search tool available. Use it to:",
+    `  • Crawl ${siteUrl} (homepage + 2-4 key inner pages) for content,`,
+    "    titles, meta descriptions, and structure when the snapshot is",
+    "    thin or missing.",
+    "  • Check Irish-market competitor presence (search 'site:.ie ...').",
+    "  • Verify recent SEO best practice claims if you cite them.",
+    "Cap your searches at 8 — be deliberate, not exhaustive.",
     "",
     "Produce the full SEO audit per your methodology. Output the",
     "Markdown report first, then end with the JSON summary block as",
