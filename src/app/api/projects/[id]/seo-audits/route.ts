@@ -20,6 +20,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSeoAuditEligibility } from "@/lib/seo-audit/eligibility";
+import { runSeoAudit } from "@/lib/seo-audit/run";
 import type { Organisation } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -186,10 +187,13 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    audit,
-    note:
-      "Audit queued. Run engine ships in Phase 2b — once Stripe + Resend keys are wired, the row will auto-progress through generating → complete.",
+  // Fire-and-forget the run pipeline. The user's POST returns
+  // immediately with the pending row; the page polls for status
+  // changes as the run progresses. Errors are persisted on the row
+  // (status='failed' / 'unavailable') so the UI can surface them.
+  void runSeoAudit(audit.id).catch((err) => {
+    console.error(`[seo-audit ${audit.id}] background run failed:`, err);
   });
+
+  return NextResponse.json({ ok: true, audit });
 }

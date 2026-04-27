@@ -14,9 +14,8 @@
  * the explanation is `lib/seo-audit/eligibility` — UI just renders.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +25,27 @@ import {
   CheckCircle2,
   Loader2,
   ArrowRight,
+  ChevronDown,
 } from "lucide-react";
+
+// Rotating thinking phrases shown while an audit is generating.
+// Cycle every 2.5s — fast enough that the UI feels alive, slow enough
+// that users can read each one. The actual progress_step from the
+// server replaces this when available; the rotation is the fallback.
+const SEO_THINKING_PHRASES = [
+  "Crawling the site…",
+  "Reading meta tags + schema…",
+  "Auditing on-page SEO…",
+  "Checking Core Web Vitals…",
+  "Mapping the keyword landscape…",
+  "Hunting content gaps…",
+  "Scoring AI search resilience…",
+  "Comparing against competitors…",
+  "Sniffing out technical issues…",
+  "Calibrating for the Irish market…",
+  "Prioritising the action plan…",
+  "Writing it up properly…",
+];
 
 interface Eligibility {
   monthly_allowance: number;
@@ -48,7 +67,15 @@ interface Audit {
     | "failed"
     | "unavailable";
   source: "public_paid" | "account_paid" | "account_included";
-  report_summary: { seo_health_score?: number } | null;
+  report_summary: {
+    seo_health_score?: number;
+    overall_assessment?: string;
+    top_3_priorities?: string[];
+    ai_resilience_score?: number;
+  } | null;
+  report_markdown?: string | null;
+  progress_step?: string | null;
+  progress_percent?: number | null;
   error_message: string | null;
   created_at: string;
   generated_at: string | null;
@@ -68,6 +95,15 @@ export default function SeoAuditPage() {
   const [websiteUrl, setWebsiteUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionState, setActionState] = useState<ActionState>({ kind: "idle" });
+  // The audit currently in flight (post-click, while it streams progress).
+  // We poll its status every 1.5s until it lands at complete/failed.
+  const [activeAuditId, setActiveAuditId] = useState<string | null>(null);
+  const [activeAudit, setActiveAudit] = useState<Audit | null>(null);
+  // Index into SEO_THINKING_PHRASES — rotates every 2.5s during generation.
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  // Which past audit's report is expanded inline. Click a row to toggle.
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}/seo-audits`);
@@ -81,8 +117,61 @@ export default function SeoAuditPage() {
   }, [projectId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
+
+  // ── In-flight audit polling ──────────────────────────────────
+  // When activeAuditId is set, we poll its status every 1.5s. Once
+  // it hits a terminal state we stop polling, refresh the list to
+  // pick up the row's final shape, and clear the active state.
+  useEffect(() => {
+    if (!activeAuditId) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+    const tick = async () => {
+      const res = await fetch(
+        `/api/projects/${projectId}/seo-audits/${activeAuditId}`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const a = data.audit as Audit | undefined;
+      if (!a) return;
+      setActiveAudit(a);
+      const terminal = ["complete", "failed", "unavailable"].includes(a.status);
+      if (terminal) {
+        // Audit done — refresh the past-audits list to capture the
+        // completed row, then clear the in-flight state. Auto-expand
+        // the just-completed report so the user sees it inline.
+        await fetchData();
+        if (a.status === "complete") setExpandedAuditId(a.id);
+        setActiveAuditId(null);
+        setActiveAudit(null);
+      }
+    };
+    pollIntervalRef.current = setInterval(tick, 1500);
+    // Kick the first poll immediately so the UI doesn't sit empty
+    // for the first 1.5s.
+    tick();
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [activeAuditId, projectId, fetchData]);
+
+  // ── Thinking phrase rotator ──────────────────────────────────
+  // Cycles SEO_THINKING_PHRASES every 2.5s while an audit is running.
+  // Used as a fallback when the server's progress_step is empty.
+  useEffect(() => {
+    if (!activeAuditId) return;
+    const id = setInterval(() => {
+      setPhraseIdx((i) => (i + 1) % SEO_THINKING_PHRASES.length);
+    }, 2500);
+    return () => clearInterval(id);
+  }, [activeAuditId]);
 
   const runFreeAudit = async () => {
     setActionState({ kind: "running" });
@@ -100,9 +189,9 @@ export default function SeoAuditPage() {
         });
         return;
       }
-      // Success — refresh the list. The new row will be in 'pending'
-      // until Phase 2b's run engine processes it.
-      await fetchData();
+      // Success — start polling the new audit's progress. The poller
+      // updates activeAudit in state, which drives the thinking UI.
+      setActiveAuditId(data.audit.id);
       setActionState({ kind: "idle" });
     } catch (err) {
       setActionState({
@@ -150,8 +239,53 @@ export default function SeoAuditPage() {
         </div>
       </header>
 
+      {/* ── In-flight audit thinking UI ── */}
+      {/* When activeAuditId is set, the user just clicked Run audit
+          and the pipeline is firing. We hide the eligibility CTA and
+          show a progress card with rotating SEO-themed phrases + the
+          server-reported step + a progress bar. */}
+      {activeAuditId && (
+        <section className="mt-8 mb-10 rounded-lg border border-emerald-dark/30 bg-emerald-dark/5 p-6">
+          <div className="flex items-start gap-3">
+            <Loader2 className="h-5 w-5 text-emerald-dark mt-0.5 shrink-0 animate-spin" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-text-primary">
+                {activeAudit?.progress_step ?? SEO_THINKING_PHRASES[phraseIdx]}
+              </p>
+              <p className="mt-1 text-sm text-text-secondary leading-relaxed">
+                Running the 9-phase Howl.ie SEO audit on{" "}
+                <span className="font-mono text-xs">
+                  {hostnameOf(activeAudit?.site_url ?? websiteUrl ?? "")}
+                </span>
+                . Takes 60-90 seconds. You can close this tab — the
+                audit keeps running and you&apos;ll see it in the list
+                when you come back.
+              </p>
+              {/* Progress bar — uses the server's progress_percent
+                  when available, falls back to an indeterminate
+                  pulse-like bar based on the rotating phrase index. */}
+              <div className="mt-4 h-1.5 w-full bg-emerald-dark/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-dark transition-all duration-700 ease-out"
+                  style={{
+                    width: `${
+                      activeAudit?.progress_percent ??
+                      Math.min(
+                        90,
+                        ((phraseIdx + 1) / SEO_THINKING_PHRASES.length) * 100
+                      )
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── Eligibility + run CTA ── */}
-      <section className="mt-8 mb-10">
+      {/* Hidden while an audit is in flight (the thinking UI takes over). */}
+      <section className={`mt-8 mb-10 ${activeAuditId ? "hidden" : ""}`}>
         {loading ? (
           <p className="text-sm text-text-muted">Loading…</p>
         ) : eligibility ? (
@@ -233,56 +367,67 @@ export default function SeoAuditPage() {
         ) : (
           <ul className="mt-5 divide-y divide-border border-y border-border">
             {audits.map((a) => (
-              <li
-                key={a.id}
-                className="flex items-center justify-between gap-4 py-4 group"
-              >
-                <div className="flex items-start gap-4 min-w-0 flex-1">
-                  <StatusBadge status={a.status} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-text-primary truncate">
-                      {hostnameOf(a.site_url)}
-                    </p>
-                    <p className="text-xs text-text-muted mt-0.5">
-                      {new Date(a.created_at).toLocaleDateString("en-IE", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                      {" · "}
-                      <SourceLabel source={a.source} />
-                      {a.report_summary?.seo_health_score !== undefined && (
-                        <>
-                          {" · "}
-                          Health score{" "}
-                          <span className="text-text-primary font-medium">
-                            {a.report_summary.seo_health_score}
-                          </span>
-                          /100
-                        </>
-                      )}
-                    </p>
-                    {a.status === "failed" && a.error_message && (
-                      <p className="text-xs text-danger mt-1">
-                        {a.error_message}
+              <li key={a.id} className="py-4">
+                <div className="flex items-center justify-between gap-4 group">
+                  <div className="flex items-start gap-4 min-w-0 flex-1">
+                    <StatusBadge status={a.status} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">
+                        {hostnameOf(a.site_url)}
                       </p>
-                    )}
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {new Date(a.created_at).toLocaleDateString("en-IE", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                        {" · "}
+                        <SourceLabel source={a.source} />
+                        {a.report_summary?.seo_health_score !== undefined && (
+                          <>
+                            {" · "}
+                            Health score{" "}
+                            <span className="text-text-primary font-medium">
+                              {a.report_summary.seo_health_score}
+                            </span>
+                            /100
+                          </>
+                        )}
+                      </p>
+                      {a.status === "failed" && a.error_message && (
+                        <p className="text-xs text-danger mt-1">
+                          {a.error_message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0">
+                    {a.status === "complete" ? (
+                      <button
+                        onClick={() =>
+                          setExpandedAuditId(
+                            expandedAuditId === a.id ? null : a.id
+                          )
+                        }
+                        className="text-sm font-medium text-emerald-dark hover:text-emerald-dark/80 underline underline-offset-4 inline-flex items-center gap-1"
+                      >
+                        {expandedAuditId === a.id ? "Hide" : "View"} report
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${
+                            expandedAuditId === a.id ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                    ) : a.status === "pending" || a.status === "generating" ? (
+                      <span className="text-xs text-text-muted">
+                        Processing…
+                      </span>
+                    ) : null}
                   </div>
                 </div>
-                <div className="shrink-0">
-                  {a.status === "complete" ? (
-                    <Link
-                      href={`/seo-audit/${a.id}`}
-                      className="text-sm font-medium text-emerald-dark hover:text-emerald-dark/80 underline underline-offset-4"
-                    >
-                      View report
-                    </Link>
-                  ) : a.status === "pending" || a.status === "generating" ? (
-                    <span className="text-xs text-text-muted">
-                      Processing…
-                    </span>
-                  ) : null}
-                </div>
+                {expandedAuditId === a.id && (
+                  <ExpandedReport projectId={projectId} auditId={a.id} />
+                )}
               </li>
             ))}
           </ul>
@@ -336,4 +481,86 @@ function hostnameOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Inline report viewer — fetches the full audit (including the
+ * markdown body, which the list endpoint doesn't include) on demand.
+ * Renders the markdown as a `<pre>` for now; rich rendering with a
+ * proper markdown library is a follow-up polish task.
+ */
+function ExpandedReport({
+  projectId,
+  auditId,
+}: {
+  projectId: string;
+  auditId: string;
+}) {
+  const [audit, setAudit] = useState<Audit | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(
+        `/api/projects/${projectId}/seo-audits/${auditId}`
+      );
+      if (!cancelled && res.ok) {
+        const data = await res.json();
+        setAudit(data.audit);
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, auditId]);
+
+  if (loading) {
+    return (
+      <div className="mt-4 ml-12 text-sm text-text-muted flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading report…
+      </div>
+    );
+  }
+  if (!audit?.report_markdown) {
+    return (
+      <p className="mt-4 ml-12 text-sm text-text-muted">
+        No report content yet.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-5 ml-12 max-w-3xl border-l-2 border-emerald-dark/20 pl-6 py-2">
+      {/* Top-3 priorities banner from the JSON summary, if present. */}
+      {Array.isArray(audit.report_summary?.top_3_priorities) &&
+        audit.report_summary.top_3_priorities.length > 0 && (
+          <div className="mb-5 rounded-md bg-emerald-dark/5 border border-emerald-dark/20 p-4">
+            <p className="text-xs uppercase tracking-[0.15em] text-emerald-dark font-semibold">
+              Top priorities
+            </p>
+            <ul className="mt-3 space-y-2">
+              {audit.report_summary.top_3_priorities.map(
+                (p: string, i: number) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 text-sm text-text-primary"
+                  >
+                    <span className="font-mono text-text-muted mt-0.5">
+                      {i + 1}.
+                    </span>
+                    <span>{p}</span>
+                  </li>
+                )
+              )}
+            </ul>
+          </div>
+        )}
+      {/* Markdown body. Plain pre for now; we can swap in a markdown
+          renderer (react-markdown) in a follow-up. */}
+      <pre className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap font-sans">
+        {audit.report_markdown}
+      </pre>
+    </div>
+  );
 }
