@@ -21,12 +21,31 @@ import {
   ArrowRight,
   Save,
   AlertTriangle,
+  Layers,
+  Search,
 } from "lucide-react";
 
 interface SuggestedPrompt {
   text: string;
   category: PromptCategory;
 }
+
+/**
+ * Phase 6 batch flow state.
+ *
+ * The batch runs three model calls back-to-back (generate → score →
+ * mirror); each transition is observable so the UI can show a
+ * step-by-step progress label instead of a single opaque spinner. We
+ * keep `count` populated as soon as generate returns so the user sees
+ * "Scoring 40 prompts…" rather than a generic phrase.
+ */
+type BatchState =
+  | { kind: "idle" }
+  | { kind: "generating" }
+  | { kind: "scoring"; count: number }
+  | { kind: "mirroring"; count: number }
+  | { kind: "done"; count: number }
+  | { kind: "error"; message: string };
 
 export default function PromptsPage() {
   const params = useParams();
@@ -43,6 +62,8 @@ export default function PromptsPage() {
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(
     new Set()
   );
+  // Phase 6 — AdWords-style batch coverage flow.
+  const [batchState, setBatchState] = useState<BatchState>({ kind: "idle" });
 
   const fetchPrompts = useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}/prompts`);
@@ -174,6 +195,123 @@ export default function PromptsPage() {
     }
   };
 
+  /**
+   * Phase 6 — kick off a full AdWords-style batch.
+   *
+   * Three sequential model calls, each driving the active-prompts list
+   * forward in stages so the user sees the new prompts arrive before
+   * scoring + mirroring complete. Failures at score/mirror are
+   * non-fatal — the prompts already exist as rows; the user can
+   * re-run the missing stage later from a per-prompt action.
+   */
+  const runFullBatch = async () => {
+    setBatchState({ kind: "generating" });
+
+    // ── Stage 1: generate ─────────────────────────────────
+    let generated;
+    try {
+      const res = await fetch("/api/prompts/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBatchState({
+          kind: "error",
+          message:
+            typeof data?.error === "string"
+              ? data.error
+              : `Generation failed (HTTP ${res.status})`,
+        });
+        return;
+      }
+      generated = data;
+      // Show the new prompts immediately. Score/mirror will then
+      // backfill the metadata in subsequent stages.
+      if (Array.isArray(data.prompts) && data.prompts.length > 0) {
+        setPrompts((prev) => [...data.prompts, ...prev]);
+      }
+    } catch (err) {
+      setBatchState({
+        kind: "error",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Network error during prompt generation.",
+      });
+      return;
+    }
+
+    const count: number = generated?.count ?? 0;
+    if (count === 0) {
+      setBatchState({
+        kind: "error",
+        message:
+          "Generation returned zero prompts. Check the brand profile and try again.",
+      });
+      return;
+    }
+
+    const newPromptIds: string[] = (generated.prompts ?? []).map(
+      (p: Prompt) => p.id
+    );
+
+    // ── Stage 2: score ────────────────────────────────────
+    setBatchState({ kind: "scoring", count });
+    try {
+      const res = await fetch("/api/prompts/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, promptIds: newPromptIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.prompts)) {
+        // Merge updated rows into the active list. Don't blat anything
+        // outside the new batch — other prompts keep whatever they had.
+        const updates = new Map<string, Prompt>(
+          data.prompts.map((p: Prompt) => [p.id, p])
+        );
+        setPrompts((prev) =>
+          prev.map((p) => updates.get(p.id) ?? p)
+        );
+      }
+      // We deliberately do NOT bail on a score failure — the prompts
+      // still exist, scoring is informational, and mirror can still run.
+    } catch (err) {
+      console.warn("Score stage failed (non-fatal):", err);
+    }
+
+    // ── Stage 3: mirror ───────────────────────────────────
+    setBatchState({ kind: "mirroring", count });
+    try {
+      const res = await fetch("/api/prompts/mirror", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, promptIds: newPromptIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.prompts)) {
+        const updates = new Map<string, Prompt>(
+          data.prompts.map((p: Prompt) => [p.id, p])
+        );
+        setPrompts((prev) =>
+          prev.map((p) => updates.get(p.id) ?? p)
+        );
+      }
+    } catch (err) {
+      console.warn("Mirror stage failed (non-fatal):", err);
+    }
+
+    setBatchState({ kind: "done", count });
+    triggerSaved();
+    // Auto-clear the "done" banner after a few seconds so the section
+    // doesn't carry stale state forever.
+    setTimeout(() => {
+      setBatchState((s) => (s.kind === "done" ? { kind: "idle" } : s));
+    }, 4000);
+  };
+
   const categoryOptions: PromptCategory[] = [
     "awareness",
     "consideration",
@@ -255,18 +393,88 @@ export default function PromptsPage() {
               you pick the ones worth tracking.
             </p>
           )}
-          <Button
-            onClick={fetchSuggestions}
-            variant={suggestions.length > 0 ? "outline" : "default"}
-            disabled={loadingSuggestions}
-          >
-            {loadingSuggestions ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4 mr-2" />
-            )}
-            {suggestions.length > 0 ? "Regenerate suggestions" : "Generate suggestions"}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+            <Button
+              onClick={fetchSuggestions}
+              variant={suggestions.length > 0 ? "outline" : "default"}
+              disabled={loadingSuggestions || batchState.kind !== "idle"}
+            >
+              {loadingSuggestions ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              {suggestions.length > 0
+                ? "Regenerate suggestions"
+                : "Generate suggestions"}
+            </Button>
+            {/* Phase 6 — AdWords-style coverage. Sits next to the
+                single-shot suggester so the user can pick the lighter
+                or fuller path. We disable both buttons while either
+                flow is in flight to avoid concurrent Anthropic calls
+                hammering the same brand profile. */}
+            <Button
+              onClick={runFullBatch}
+              variant="outline"
+              disabled={loadingSuggestions || batchState.kind !== "idle"}
+              title="Generate 30-50 prompts, then score importance + mirror to Google queries"
+            >
+              {batchState.kind !== "idle" && batchState.kind !== "done" ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Layers className="h-4 w-4 mr-2" />
+              )}
+              Generate full set
+            </Button>
+          </div>
+
+          {/* Phase 6 — batch progress strip. Sits below the buttons so
+              the user sees stage-by-stage progress (generate → score →
+              mirror) without losing the buttons themselves. */}
+          {batchState.kind !== "idle" && (
+            <div
+              className={`mt-5 rounded-md border p-3 text-sm ${
+                batchState.kind === "error"
+                  ? "border-danger/30 bg-danger/5 text-danger"
+                  : batchState.kind === "done"
+                    ? "border-emerald-dark/30 bg-emerald-dark/5 text-emerald-dark"
+                    : "border-emerald-dark/30 bg-emerald-dark/5 text-text-primary"
+              }`}
+            >
+              {batchState.kind === "generating" && (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating prompts… (~20s)
+                </span>
+              )}
+              {batchState.kind === "scoring" && (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Scoring importance for {batchState.count} new prompts…
+                </span>
+              )}
+              {batchState.kind === "mirroring" && (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Mirroring to Google queries for {batchState.count}
+                  &nbsp;prompts…
+                </span>
+              )}
+              {batchState.kind === "done" && (
+                <span className="flex items-center gap-2">
+                  <Check className="h-4 w-4" />
+                  Added {batchState.count} prompts with importance + Google
+                  mirror.
+                </span>
+              )}
+              {batchState.kind === "error" && (
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{batchState.message}</span>
+                </span>
+              )}
+            </div>
+          )}
 
           {loadingSuggestions && (
             <div className="pt-8">
@@ -407,22 +615,57 @@ export default function PromptsPage() {
               {prompts.map((prompt) => (
                 <li
                   key={prompt.id}
-                  className="flex items-center justify-between gap-4 py-3.5 group"
+                  className="flex items-start justify-between gap-4 py-3.5 group"
                 >
                   <Link
                     href={`/projects/${projectId}/prompts/${prompt.id}`}
-                    className="flex items-center gap-3 flex-1 min-w-0 hover:text-emerald-dark transition-colors"
+                    className="flex flex-col gap-1.5 flex-1 min-w-0 hover:text-emerald-dark transition-colors"
                   >
-                    <p className="text-sm text-text-primary truncate group-hover:underline">
-                      {prompt.text}
-                    </p>
-                    <Badge
-                      variant={prompt.category as PromptCategory}
-                      className="shrink-0"
-                    >
-                      {CATEGORY_LABELS[prompt.category as PromptCategory] ??
-                        prompt.category}
-                    </Badge>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <p className="text-sm text-text-primary truncate group-hover:underline">
+                        {prompt.text}
+                      </p>
+                      <Badge
+                        variant={prompt.category as PromptCategory}
+                        className="shrink-0"
+                      >
+                        {CATEGORY_LABELS[prompt.category as PromptCategory] ??
+                          prompt.category}
+                      </Badge>
+                    </div>
+                    {/* Phase 6 — AdWords-style metadata strip. Renders
+                        only when at least one of importance / mirror
+                        is present; legacy prompts stay clean.
+                        Importance is a 5-dot rating; mirror is a
+                        monospace search-style fragment. */}
+                    {(prompt.importance_score ||
+                      prompt.google_query_mirror) && (
+                      <div className="flex items-center gap-3 text-xs text-text-muted">
+                        {prompt.importance_score ? (
+                          <span
+                            className="inline-flex items-center gap-1.5"
+                            title={
+                              prompt.importance_rationale
+                                ? `Importance ${prompt.importance_score}/5 — ${prompt.importance_rationale}`
+                                : `Importance ${prompt.importance_score}/5`
+                            }
+                          >
+                            <ImportanceDots
+                              score={prompt.importance_score}
+                            />
+                            <span className="text-[11px] font-mono">
+                              {prompt.importance_score}/5
+                            </span>
+                          </span>
+                        ) : null}
+                        {prompt.google_query_mirror ? (
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-text-muted truncate">
+                            <Search className="h-3 w-3 shrink-0" />
+                            {prompt.google_query_mirror}
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
                   </Link>
                   <Button
                     variant="ghost"
@@ -469,5 +712,25 @@ export default function PromptsPage() {
         </div>
       </section>
     </DashboardShell>
+  );
+}
+
+/**
+ * Phase 6 — five-dot importance rating. Filled dots = score, empty
+ * dots = remainder. Kept tiny so it reads as metadata, not a CTA.
+ */
+function ImportanceDots({ score }: { score: number }) {
+  const filled = Math.max(0, Math.min(5, Math.round(score)));
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={`inline-block w-1.5 h-1.5 rounded-full ${
+            i <= filled ? "bg-emerald-dark" : "bg-text-muted/30"
+          }`}
+        />
+      ))}
+    </span>
   );
 }

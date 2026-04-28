@@ -117,6 +117,17 @@ export interface Prompt {
   /** Optional folder-style grouping. One topic per prompt. NULL = "No Topic". */
   topic_id: string | null;
   created_at: string;
+  /**
+   * Phase 6 — AdWords-style coverage metadata (migration 024).
+   * All nullable; legacy prompts created before Phase 6 carry NULLs
+   * until the user opts in by running /api/prompts/score and
+   * /api/prompts/mirror.
+   */
+  importance_score?: 1 | 2 | 3 | 4 | 5 | null;
+  importance_rationale?: string | null;
+  google_query_mirror?: string | null;
+  /** Set when the prompt came from a /api/prompts/generate batch. */
+  generated_batch_id?: string | null;
 }
 
 export type PromptStatus = "active" | "inactive" | "deleted";
