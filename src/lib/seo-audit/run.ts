@@ -203,7 +203,7 @@ export async function runSeoAudit(auditId: string): Promise<void> {
     logAiUsage({
       provider: "anthropic",
       model: response.model ?? SONNET_MODEL,
-      feature: "other",
+      feature: "seo_audit",
       input_tokens: response.usage?.input_tokens ?? 0,
       output_tokens: response.usage?.output_tokens ?? 0,
       web_search_calls,
@@ -216,7 +216,7 @@ export async function runSeoAudit(auditId: string): Promise<void> {
     logAiUsage({
       provider: "anthropic",
       model: SONNET_MODEL,
-      feature: "other",
+      feature: "seo_audit",
       org_id: audit.org_id,
       project_id: audit.project_id,
       duration_ms: Date.now() - sonnetStartedAt,
@@ -511,7 +511,7 @@ Return the JSON.`;
     logAiUsage({
       provider: "anthropic",
       model: "claude-haiku-4-5-20251001",
-      feature: "other",
+      feature: "seo_observer",
       duration_ms: Date.now() - startedAt,
       success: false,
       error_code: err instanceof Error ? err.message.slice(0, 120) : "unknown",
@@ -521,7 +521,7 @@ Return the JSON.`;
   logAiUsage({
     provider: "anthropic",
     model: response.model,
-    feature: "other",
+    feature: "seo_observer",
     input_tokens: response.usage?.input_tokens ?? 0,
     output_tokens: response.usage?.output_tokens ?? 0,
     duration_ms: Date.now() - startedAt,

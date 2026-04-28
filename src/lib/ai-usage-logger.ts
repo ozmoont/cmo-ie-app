@@ -18,8 +18,13 @@ export type UsageFeature =
   | "brief"
   | "brand_extract"
   | "prompt_suggest"
+  | "prompt_generate" // Phase 6 batch generator (30-50 prompts in one pass)
+  | "prompt_score" // Phase 6 importance scoring (1-5 per prompt)
+  | "prompt_mirror" // Phase 6 Google-query mirroring (closest keyword lookup)
   | "classifier"
   | "playbook"
+  | "seo_audit" // Phase 2b Sonnet call producing the audit report
+  | "seo_observer" // Phase 2b Haiku self-learning observer pass
   | "other";
 
 export interface LogAiUsageInput {
