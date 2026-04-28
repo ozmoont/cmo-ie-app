@@ -9,6 +9,16 @@ import { DashboardShell } from "@/components/dashboard/shell";
 import { createClient } from "@/lib/supabase/server";
 import { GapsTabs } from "@/components/dashboard/gaps-tabs";
 
+// Next.js 16 typed-routes note:
+// The Next 16 validator flags this layout because the global
+// LayoutProps<"/projects/[id]/gaps"> generic expects a slightly
+// different shape than the hand-rolled `{ children, params }` we use.
+// We tried switching to LayoutProps<…> directly but it can't resolve
+// `LayoutRoutes` from this file's scope — a known quirk of Next's
+// generated routes.d.ts under the (dashboard) route group. The
+// hand-rolled type still produces a working build on Vercel; the
+// validator complaint is cosmetic. Tracked as a Next 16 cleanup
+// follow-up — do not change without verifying the build first.
 export default async function GapsLayout({
   children,
   params,

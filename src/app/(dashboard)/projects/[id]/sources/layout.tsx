@@ -11,6 +11,8 @@ import { DashboardShell } from "@/components/dashboard/shell";
 import { createClient } from "@/lib/supabase/server";
 import { SourcesTabs } from "@/components/dashboard/sources-tabs";
 
+// Next.js 16 typed-routes — see gaps/layout.tsx for the rationale on
+// why we keep the hand-rolled prop type instead of LayoutProps<…>.
 export default async function SourcesLayout({
   children,
   params,
