@@ -25,6 +25,10 @@ export type UsageFeature =
   | "playbook"
   | "seo_audit" // Phase 2b Sonnet call producing the audit report
   | "seo_observer" // Phase 2b Haiku self-learning observer pass
+  | "audit_council_claude" // Phase 7 Claude senior auditor
+  | "audit_council_chatgpt" // Phase 7 ChatGPT senior auditor
+  | "audit_council_gemini" // Phase 7 Gemini senior auditor
+  | "audit_council_chair" // Phase 7 Haiku chair synthesiser
   | "other";
 
 export interface LogAiUsageInput {

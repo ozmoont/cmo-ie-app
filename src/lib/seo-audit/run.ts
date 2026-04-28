@@ -26,6 +26,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchSiteSnapshot } from "@/lib/brand-profile";
 import { runPsi, PsiError, type PsiResult } from "@/lib/seo-audit/psi";
 import { logAiUsage } from "@/lib/ai-usage-logger";
+import { enqueueAuditReview } from "@/lib/audit-council/enqueue";
 
 const SONNET_MODEL = "claude-sonnet-4-6";
 // Audit reports are big — we want enough headroom for a 9-phase
@@ -263,6 +264,25 @@ export async function runSeoAudit(auditId: string): Promise<void> {
   }).catch((err) => {
     console.error(`[seo-audit ${auditId}] observer pass failed:`, err);
   });
+
+  // ── Step 6: Audit Council (Phase 7a, fire-and-forget) ─────────
+  // Cross-model verification of the report. Customer-invisible; lands
+  // in audit_reviews for /admin/audit-council. Fire-and-forget so a
+  // council failure can never affect the customer's audit.
+  // org_id is nullable on legacy public-paid audits — skip those to
+  // keep the council scoped to in-account artifacts where attribution
+  // exists. Public audits get audited the day we backfill org_id.
+  if (audit.org_id) {
+    const orgIdForCouncil = audit.org_id;
+    void enqueueAuditReview({
+      artifactType: "seo_audit",
+      artifactId: auditId,
+      orgId: orgIdForCouncil,
+      projectId: audit.project_id,
+    }).catch((err) => {
+      console.error(`[seo-audit ${auditId}] audit council failed:`, err);
+    });
+  }
 }
 
 // ── Internal helpers ────────────────────────────────────────────
