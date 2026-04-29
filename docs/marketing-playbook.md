@@ -244,7 +244,7 @@ Identify which one fits before the call. Don't try to land all three.
 
 ### 8.3 Inbound (organic search + AI)
 
-- Indexed pages: `/`, `/preview`, `/pricing`, `/agency`, `/crawlability`, `/faq`, `/changelog`. Drive long-tail SEO (and now AI) traffic.
+- Indexed pages: `/`, `/pricing`, `/agency`, `/crawlability`, `/faq`, `/changelog`. (`/preview` was retired on 29 April 2026 when the teaser was collapsed into `/`; the route now 308-redirects to `/`.)  Drive long-tail SEO (and now AI) traffic.
 - Ironically, the best test of CMO.ie's value prop is whether CMO.ie itself shows up in AI answers for "AI visibility tracker for Irish brands." We track our own visibility on the same platform we sell.
 
 ### 8.4 Community
