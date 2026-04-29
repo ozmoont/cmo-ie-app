@@ -12,8 +12,10 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { ScanSearch, BarChart3, Users, Sparkles } from "lucide-react";
 import { requireAdmin } from "@/lib/admin-auth";
 import { AdminOpsClient } from "./AdminOpsClient";
+import { AdminDashboard } from "./admin-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -59,15 +61,77 @@ export default async function AdminOpsPage() {
 
       <main className="max-w-6xl mx-auto px-6 md:px-10 pt-10 pb-20">
         <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
-          Ops dashboard
+          The state of the operation.
         </h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          Managed AI spend, per-org usage and recent errors. Data refreshes
-          on page load — hit refresh for a newer view.
+        <p className="mt-2 text-sm text-text-secondary max-w-2xl">
+          Internal ops dashboard. Customer never sees this surface. Quick
+          KPIs up top, detailed managed-spend / per-org usage / error feed
+          underneath.
         </p>
 
-        <AdminOpsClient />
+        {/* Quick links into the deeper admin pages. */}
+        <nav className="mt-6 flex flex-wrap gap-2">
+          <AdminLink
+            href="/admin/audit-council"
+            icon={<ScanSearch className="h-4 w-4" />}
+            label="Audit Council"
+          />
+          <AdminLink
+            href="/admin/audit-council/metrics"
+            icon={<BarChart3 className="h-4 w-4" />}
+            label="Council metrics"
+          />
+          <AdminLink
+            href="/admin/playbooks"
+            icon={<Users className="h-4 w-4" />}
+            label="Playbooks"
+          />
+          <AdminLink
+            href="/admin/skills"
+            icon={<Sparkles className="h-4 w-4" />}
+            label="Skills"
+          />
+        </nav>
+
+        {/* ── Phase 7 four-panel snapshot ── */}
+        {/* Audit Council pending decisions, Customer KPIs, AI spend,
+            System health. Each panel fails independently. */}
+        <section className="mt-10">
+          <AdminDashboard />
+        </section>
+
+        {/* ── Detailed ops view (pre-existing) ── */}
+        {/* Managed spend trend, per-org table, recent errors feed. */}
+        <section className="mt-12 pt-10 border-t border-border">
+          <h2 className="text-lg font-semibold tracking-tight">
+            Detailed ops
+          </h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Managed AI spend, per-org usage, recent errors + pricey calls.
+          </p>
+          <AdminOpsClient />
+        </section>
       </main>
     </div>
+  );
+}
+
+function AdminLink({
+  href,
+  icon,
+  label,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-border text-text-secondary hover:text-text-primary hover:border-emerald-dark/40 transition-colors"
+    >
+      {icon}
+      {label}
+    </Link>
   );
 }

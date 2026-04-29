@@ -1,9 +1,14 @@
 "use client";
 
 /**
- * Admin landing client component. Polls /api/admin/dashboard on
- * mount, renders the four panels (Audit Council, customers, AI
- * spend, system health), each independently failable.
+ * Admin landing four-panel dashboard. Polls /api/admin/dashboard on
+ * mount, renders Audit Council snapshot, Customer KPIs, AI spend,
+ * and System health. Each panel fails independently — a single
+ * broken query doesn't blank the whole landing.
+ *
+ * Lives under src/app/admin/ (not (dashboard)/admin) because the
+ * existing /admin route ships its own custom header instead of the
+ * customer-facing DashboardShell.
  */
 
 import { useEffect, useState } from "react";
@@ -102,7 +107,7 @@ export function AdminDashboard() {
   }
 
   return (
-    <section className="py-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <AuditCouncilPanel result={data.audit_council} />
       <CustomersPanel result={data.customers} />
       <AiSpendPanel result={data.ai_spend} />
@@ -155,21 +160,16 @@ function CustomersPanel({
       icon={<Users className="h-4 w-4" />}
       title="Customers"
       href="/admin/playbooks"
-      hrefLabel="View playbooks"
+      hrefLabel="Playbooks"
       error={result.error}
     >
       {result.data && (
         <>
           <Stat label="Total orgs" value={result.data.total_orgs} />
           <Stat label="Total projects" value={result.data.total_projects} />
-          <Stat
-            label="Signups last 7d"
-            value={result.data.signups_last_7d}
-          />
+          <Stat label="Signups last 7d" value={result.data.signups_last_7d} />
           <div className="col-span-2 text-xs text-text-muted">
-            <p className="mb-1 uppercase tracking-[0.15em]">
-              Plan breakdown
-            </p>
+            <p className="mb-1 uppercase tracking-[0.15em]">Plan breakdown</p>
             <ul className="grid grid-cols-2 gap-1 font-mono">
               {result.data.plan_breakdown.map((p) => (
                 <li key={p.plan} className="flex justify-between">
@@ -185,11 +185,7 @@ function CustomersPanel({
   );
 }
 
-function AiSpendPanel({
-  result,
-}: {
-  result: DashboardPayload["ai_spend"];
-}) {
+function AiSpendPanel({ result }: { result: DashboardPayload["ai_spend"] }) {
   return (
     <Panel
       icon={<Receipt className="h-4 w-4" />}
