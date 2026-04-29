@@ -12,10 +12,11 @@
  * whereas this endpoint always fetches fresh from the website.
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractBrandProfile } from "@/lib/brand-profile";
+import { enqueueAuditReview } from "@/lib/audit-council/enqueue";
 
 export async function POST(
   _request: Request,
@@ -33,11 +34,12 @@ export async function POST(
   const { data: project, error } = await supabase
     .from("projects")
     .select(
-      "id, brand_name, brand_tracked_name, website_url"
+      "id, org_id, brand_name, brand_tracked_name, website_url"
     )
     .eq("id", projectId)
     .maybeSingle<{
       id: string;
+      org_id: string;
       brand_name: string;
       brand_tracked_name: string | null;
       website_url: string | null;
@@ -93,6 +95,20 @@ export async function POST(
     console.error("profile regenerate: update failed:", updateError);
     return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
+
+  // Phase 7b — Audit Council fire-and-forget. Brand profile is the
+  // root of every downstream prompt + plan; auditing here catches
+  // industry-mismatch errors at the source. artifact_id is the
+  // project_id (brand profile lives on the projects row, not its own
+  // table — one profile per project, mutate in place).
+  after(async () => {
+    await enqueueAuditReview({
+      artifactType: "brand_profile",
+      artifactId: project.id,
+      orgId: project.org_id,
+      projectId: project.id,
+    });
+  });
 
   return NextResponse.json({
     profile: extracted,

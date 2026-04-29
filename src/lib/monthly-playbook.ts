@@ -23,6 +23,7 @@ import { logAiUsage } from "@/lib/ai-usage-logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getDomainGaps } from "@/lib/queries/gap-analysis";
 import { computeShareOfVoice } from "@/lib/format";
+import { enqueueAuditReview } from "@/lib/audit-council/enqueue";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface MonthlyPlaybookResult {
@@ -197,7 +198,39 @@ Write this month's playbook.`,
   if (error || !data) {
     throw new Error(`Failed to persist playbook: ${error?.message ?? "unknown"}`);
   }
-  return data as MonthlyPlaybookResult;
+
+  // Phase 7b — Audit Council fire-and-forget. The playbook is one of
+  // the highest-stakes customer-facing artifacts (low frequency, high
+  // visibility), so we audit at 100% sampling. Failure here can never
+  // affect playbook delivery — the row is already persisted above.
+  const persisted = data as MonthlyPlaybookResult;
+  const orgIdForCouncil = await fetchOrgIdForProject(admin, projectId);
+  if (orgIdForCouncil) {
+    void enqueueAuditReview({
+      artifactType: "monthly_playbook",
+      artifactId: persisted.id,
+      orgId: orgIdForCouncil,
+      projectId,
+    }).catch((err) => {
+      console.error(
+        `[monthly-playbook ${persisted.id}] audit council failed:`,
+        err
+      );
+    });
+  }
+  return persisted;
+}
+
+async function fetchOrgIdForProject(
+  admin: SupabaseClient,
+  projectId: string
+): Promise<string | null> {
+  const { data } = await admin
+    .from("projects")
+    .select("org_id")
+    .eq("id", projectId)
+    .maybeSingle<{ org_id: string }>();
+  return data?.org_id ?? null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────

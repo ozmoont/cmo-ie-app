@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Loader2, AlertCircle, CheckCircle2, Flag, Skull } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -180,56 +181,58 @@ export function AuditCouncilInbox() {
       {!loading && !error && reviews.length > 0 && (
         <ul className="divide-y divide-border border-y border-border">
           {reviews.map((r) => (
-            <li
-              key={r.id}
-              className="grid grid-cols-12 gap-4 py-4 items-start"
-            >
-              <div className="col-span-12 md:col-span-2 flex items-start gap-2">
-                <VerdictBadge verdict={r.chair_verdict} status={r.status} />
-              </div>
-              <div className="col-span-12 md:col-span-7 min-w-0">
-                <p className="text-sm text-text-primary font-medium">
-                  {prettyArtifactType(r.artifact_type)}
-                  {r.sampled && (
-                    <span className="ml-2 text-xs text-text-muted font-normal">
-                      · sampled
-                    </span>
-                  )}
-                </p>
-                <p className="mt-1 text-sm text-text-secondary leading-snug line-clamp-2">
-                  {r.chair_summary ??
-                    r.error_message ??
-                    (r.status === "pending" || r.status === "running"
-                      ? "Council is running…"
-                      : "No summary yet.")}
-                </p>
-                <p className="mt-1 text-xs text-text-muted font-mono">
-                  {new Date(r.created_at).toLocaleString("en-IE", {
-                    day: "numeric",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                  {r.cost_usd !== null && r.cost_usd > 0 && (
-                    <> · ${r.cost_usd.toFixed(3)}</>
-                  )}
-                  {r.agreement_score !== null && (
-                    <> · agreement {Math.round(r.agreement_score * 100)}%</>
-                  )}
-                  {r.duration_ms !== null && (
-                    <> · {(r.duration_ms / 1000).toFixed(1)}s</>
-                  )}
-                </p>
-              </div>
-              <div className="col-span-12 md:col-span-3 text-xs text-right">
-                {r.ops_decision ? (
-                  <Badge variant="awareness" className="ml-auto">
-                    Ops: {r.ops_decision}
-                  </Badge>
-                ) : r.chair_verdict ? (
-                  <span className="text-text-muted">Awaiting decision</span>
-                ) : null}
-              </div>
+            <li key={r.id} className="group">
+              <Link
+                href={`/admin/audit-council/${r.id}`}
+                className="grid grid-cols-12 gap-4 py-4 items-start hover:bg-surface-muted/30 transition-colors -mx-2 px-2 rounded"
+              >
+                <div className="col-span-12 md:col-span-2 flex items-start gap-2">
+                  <VerdictBadge verdict={r.chair_verdict} status={r.status} />
+                </div>
+                <div className="col-span-12 md:col-span-7 min-w-0">
+                  <p className="text-sm text-text-primary font-medium group-hover:text-emerald-dark">
+                    {prettyArtifactType(r.artifact_type)}
+                    {r.sampled && (
+                      <span className="ml-2 text-xs text-text-muted font-normal">
+                        · sampled
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-1 text-sm text-text-secondary leading-snug line-clamp-2">
+                    {r.chair_summary ??
+                      r.error_message ??
+                      (r.status === "pending" || r.status === "running"
+                        ? "Council is running…"
+                        : "No summary yet.")}
+                  </p>
+                  <p className="mt-1 text-xs text-text-muted font-mono">
+                    {new Date(r.created_at).toLocaleString("en-IE", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                    {r.cost_usd !== null && r.cost_usd > 0 && (
+                      <> · ${r.cost_usd.toFixed(3)}</>
+                    )}
+                    {r.agreement_score !== null && (
+                      <> · agreement {Math.round(r.agreement_score * 100)}%</>
+                    )}
+                    {r.duration_ms !== null && (
+                      <> · {(r.duration_ms / 1000).toFixed(1)}s</>
+                    )}
+                  </p>
+                </div>
+                <div className="col-span-12 md:col-span-3 text-xs text-right">
+                  {r.ops_decision ? (
+                    <Badge variant="awareness" className="ml-auto">
+                      Ops: {r.ops_decision}
+                    </Badge>
+                  ) : r.chair_verdict ? (
+                    <span className="text-text-muted">Awaiting decision</span>
+                  ) : null}
+                </div>
+              </Link>
             </li>
           ))}
         </ul>

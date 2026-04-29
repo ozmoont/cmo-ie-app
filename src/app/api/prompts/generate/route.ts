@@ -13,13 +13,14 @@
  * Source-of-truth design doc: docs/phase-6-prompt-coverage.md
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadPromptProjectContext } from "@/lib/prompts/project-context";
 import { generatePrompts } from "@/lib/prompts/generate";
 import { logAiUsage } from "@/lib/ai-usage-logger";
 import { mapAnthropicError } from "@/lib/anthropic-errors";
+import { enqueueAuditReview } from "@/lib/audit-council/enqueue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -162,6 +163,20 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+
+  // Phase 7b — fire the Audit Council after the response is on the
+  // wire. The council runs the three-vendor verification on the new
+  // batch (industry-lock + brand-name contamination + funnel mix).
+  // Non-blocking: customer's response already returned before this
+  // executes; failures land on the audit_reviews row, never thrown.
+  after(async () => {
+    await enqueueAuditReview({
+      artifactType: "prompt_batch",
+      artifactId: batchId,
+      orgId: ctx.project.org_id,
+      projectId: ctx.project.id,
+    });
+  });
 
   return NextResponse.json({
     ok: true,

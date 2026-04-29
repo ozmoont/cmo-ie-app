@@ -13,7 +13,7 @@
  *   and bumps profile_updated_at. User corrections go here.
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -21,9 +21,11 @@ import {
   normaliseProfile,
   type BrandProfile,
 } from "@/lib/brand-profile";
+import { enqueueAuditReview } from "@/lib/audit-council/enqueue";
 
 interface ProfileRow {
   id: string;
+  org_id: string;
   brand_name: string;
   website_url: string | null;
   brand_tracked_name: string | null;
@@ -70,7 +72,7 @@ export async function GET(
   const { data: project, error } = await supabase
     .from("projects")
     .select(
-      "id, brand_name, website_url, brand_tracked_name, profile_short_description, profile_market_segment, profile_brand_identity, profile_target_audience, profile_products_services, profile_updated_at"
+      "id, org_id, brand_name, website_url, brand_tracked_name, profile_short_description, profile_market_segment, profile_brand_identity, profile_target_audience, profile_products_services, profile_updated_at"
     )
     .eq("id", projectId)
     .maybeSingle<ProfileRow>();
@@ -112,6 +114,20 @@ export async function GET(
       if (updateError) {
         console.error("profile GET: failed to persist extraction:", updateError);
       }
+
+      // Phase 7b — Audit Council on the auto-extracted profile.
+      // First-time extraction is the high-risk path (Claude inferring
+      // industry from page content); a council review catches segment
+      // mismatches at the root before any prompts/plans are derived.
+      after(async () => {
+        await enqueueAuditReview({
+          artifactType: "brand_profile",
+          artifactId: project.id,
+          orgId: project.org_id,
+          projectId: project.id,
+        });
+      });
+
       return NextResponse.json({
         profile: extracted,
         profile_updated_at: now,

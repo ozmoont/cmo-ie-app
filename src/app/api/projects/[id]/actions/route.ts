@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAiUsage } from "@/lib/ai-usage-logger";
+import { enqueueAuditReview } from "@/lib/audit-council/enqueue";
 import {
   PLAN_LIMITS,
   type ActionPlan,
@@ -478,6 +479,22 @@ async function runGenerationInBackground(args: {
 
     await fillActionPlan({ planId, rawOutput: actionPlan });
     console.info(`[plan ${planId}] background generation complete`);
+
+    // Phase 7b — fire the Audit Council fire-and-forget. Customer-
+    // invisible review of the generated plan; lands in audit_reviews
+    // for /admin/audit-council. orgId is nullable on legacy paths;
+    // we skip the audit when missing rather than guess attribution.
+    if (orgId) {
+      const orgIdForCouncil = orgId;
+      void enqueueAuditReview({
+        artifactType: "action_plan",
+        artifactId: planId,
+        orgId: orgIdForCouncil,
+        projectId,
+      }).catch((err) => {
+        console.error(`[plan ${planId}] audit council failed:`, err);
+      });
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Background generation failed";
     console.error(`[plan ${planId}] background generation failed:`, err);
