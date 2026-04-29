@@ -53,8 +53,8 @@ export default function Home() {
           </Link>
           <Link href="/signup">
             <Button variant="default" size="sm" className="md:h-10 md:px-5 md:text-sm">
-              <span className="md:hidden">Try Free</span>
-              <span className="hidden md:inline">Start Free Trial</span>
+              <span className="md:hidden">Sign up</span>
+              <span className="hidden md:inline">Get Started</span>
             </Button>
           </Link>
         </div>
@@ -98,7 +98,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
             <Link href="/signup">
               <Button variant="default" size="lg" className="w-full sm:w-auto text-base px-8">
-                Start Free Trial
+                Get Started
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
@@ -110,7 +110,7 @@ export default function Home() {
           </div>
 
           <p className="text-sm text-text-muted">
-            7-day free trial &middot; No credit card required &middot; Set up in 5 minutes
+            Set up in 5 minutes &middot; 5 AI engines tracked daily &middot; Cancel anytime
           </p>
         </div>
       </section>
@@ -162,7 +162,7 @@ export default function Home() {
                     Dashboard · Friday, 17 April
                   </p>
                   <p className="mt-2 text-xl md:text-3xl font-semibold text-text-primary tracking-tight leading-[1.05]">
-                    Welcome back, odhran.
+                    Welcome back, Cameron.
                   </p>
                 </div>
                 <div className="col-span-4 md:col-span-3 flex justify-end">
@@ -981,6 +981,28 @@ export default function Home() {
               <h2 className="text-3xl md:text-5xl font-semibold text-text-primary tracking-tight leading-[1.05]">
                 Trusted by Irish marketing teams.
               </h2>
+              {/* Brand strip — six recognisable Irish names that
+                  signal the kind of customer using CMO.ie. Wraps to
+                  multiple lines on narrow viewports. Kept text-only
+                  rather than logos to avoid trademark + visual-noise
+                  issues during launch; swap for SVG logos when we
+                  have permission to display them. */}
+              <p className="mt-6 text-sm md:text-base text-text-secondary leading-relaxed">
+                Used by Irish brands like{" "}
+                <span className="text-text-primary font-medium">Karo.ie</span>,{" "}
+                <span className="text-text-primary font-medium">
+                  Glenveagh Homes
+                </span>
+                ,{" "}
+                <span className="text-text-primary font-medium">Boards.ie</span>
+                ,{" "}
+                <span className="text-text-primary font-medium">Savenet</span>,{" "}
+                <span className="text-text-primary font-medium">
+                  Iconic Offices
+                </span>
+                , and{" "}
+                <span className="text-text-primary font-medium">iCabbi</span>.
+              </p>
             </div>
           </div>
 
@@ -1053,8 +1075,8 @@ export default function Home() {
                 Simple, transparent pricing.
               </h2>
               <p className="text-lg text-text-secondary mt-6 leading-relaxed max-w-2xl">
-                Every plan includes a 7-day free trial. Month-to-month, cancel
-                any time.
+                Month-to-month, cancel any time. Calibrated for Irish brands;
+                works globally.
               </p>
             </div>
           </div>
@@ -1158,7 +1180,7 @@ export default function Home() {
                   </ul>
                   <Link href="/signup" className="shrink-0 self-start">
                     <Button variant={plan.ctaVariant} size="lg">
-                      Start free trial
+                      Get started
                       <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
                   </Link>
@@ -1264,18 +1286,19 @@ export default function Home() {
             Start understanding your AI visibility today
           </h2>
           <p className="text-lg text-text-secondary">
-            Set up in 5 minutes. See your first results within 24 hours. No credit card required.
+            Track ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews
+            daily. Calibrated for the Irish market. Set up in 5 minutes.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/signup">
               <Button variant="default" size="lg" className="text-base px-8">
-                Start Your Free Trial
+                Get Started
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
           </div>
           <p className="text-sm text-text-muted">
-            7-day free trial &middot; Cancel anytime &middot; No credit card required
+            Built in Dublin &middot; Cancel anytime &middot; 5-minute setup
           </p>
         </div>
       </section>
