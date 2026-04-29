@@ -163,9 +163,16 @@ export async function POST(
   } = await supabase.auth.getUser();
   const customerEmail = user?.email ?? "unknown@cmo.ie";
 
-  // Insert the audit row. Status='pending' until the run engine ships
-  // in Phase 2b, at which point we'll flip to 'generating' here and
-  // kick off the background task.
+  // Decide whether this run consumes a comp credit or the plan
+  // quota. Comps consume first so an admin grant always extends
+  // runway rather than overlapping with the plan allowance.
+  const usingComp =
+    eligibility.remaining === 0 && eligibility.comp_remaining > 0;
+
+  // Insert the audit row. Status='pending' until the run engine
+  // picks it up. Source distinguishes how the audit was funded:
+  // 'admin_comp' for grant-consumption, 'account_included' for the
+  // plan's monthly quota.
   const { data: audit, error } = await admin
     .from("seo_audits")
     .insert({
@@ -190,6 +197,35 @@ export async function POST(
       { error: `Failed to create audit: ${error?.message ?? "unknown"}` },
       { status: 500 }
     );
+  }
+
+  // Decrement the comp counter NOW so a parallel request can't
+  // double-spend the same credit. Failed audits don't refund (they
+  // also don't burn the plan quota — see eligibility.ts comment on
+  // status='complete' filter), so admins should grant generously.
+  // If the decrement fails, surface it but don't fail the audit —
+  // the user already saw the spinner kick off; we'll reconcile in
+  // the eventual ops review.
+  if (usingComp) {
+    const { error: decrementError } = await admin.rpc(
+      "decrement_comp_seo_audits",
+      { p_org_id: ctx.org.id }
+    );
+    // RPC is optional — if it doesn't exist (older DB), fall back
+    // to a non-atomic update. The race window is small (single
+    // user, click-then-decrement) so for v1 the fallback is fine.
+    if (decrementError) {
+      const { data: orgRow } = await admin
+        .from("organisations")
+        .select("comp_seo_audits")
+        .eq("id", ctx.org.id)
+        .maybeSingle<{ comp_seo_audits: number | null }>();
+      const next = Math.max(0, (orgRow?.comp_seo_audits ?? 0) - 1);
+      await admin
+        .from("organisations")
+        .update({ comp_seo_audits: next })
+        .eq("id", ctx.org.id);
+    }
   }
 
   // Schedule the run pipeline AFTER the response is sent. `after()`

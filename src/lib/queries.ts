@@ -375,7 +375,7 @@ export async function getOrgBriefCredits(orgId: string) {
   const { data: org } = await supabase
     .from("organisations")
     .select(
-      "brief_credits_used, brief_credits_reset_at, plan, agency_credit_pool"
+      "brief_credits_used, brief_credits_reset_at, plan, agency_credit_pool, comp_brief_credits"
     )
     .eq("id", orgId)
     .single();
@@ -448,13 +448,23 @@ export async function getOrgBriefCredits(orgId: string) {
     org.plan === "agency"
       ? org.agency_credit_pool
       : PLAN_LIMITS[org.plan as keyof typeof PLAN_LIMITS].briefCredits;
-  const remaining =
+  const planRemaining =
     limit === Infinity ? Infinity : Math.max(0, limit - used);
+
+  // Admin-granted comps (migration 027) sit on top of the plan
+  // remaining. The total is what the UI / gating logic should use;
+  // we keep the plan-only number around so admins can see the
+  // breakdown.
+  const compRemaining = Math.max(0, org.comp_brief_credits ?? 0);
+  const remaining =
+    planRemaining === Infinity ? Infinity : planRemaining + compRemaining;
 
   return {
     used,
     limit,
     remaining,
+    plan_remaining: planRemaining,
+    comp_remaining: compRemaining,
     resetAt: nextResetAt?.toISOString() ?? null,
     plan: org.plan as "trial" | "starter" | "pro" | "advanced" | "agency",
     is_pool: org.plan === "agency",
@@ -549,16 +559,33 @@ export async function consumeBriefCredit(projectId: string): Promise<void> {
   // RPC — Supabase's typed RPC API requires codegen we don't have
   // wired, and the tiny race window (concurrent brief creations on
   // the same org) is acceptable per the docstring.
+  //
+  // Admin-granted comp_brief_credits (migration 027) consume FIRST.
+  // Only when comps are exhausted do we tick the plan's
+  // brief_credits_used counter — that way an admin grant always
+  // extends runway rather than burning the plan quota.
   const { data: org } = await admin
     .from("organisations")
-    .select("brief_credits_used, plan")
+    .select("brief_credits_used, plan, comp_brief_credits")
     .eq("id", project.org_id)
-    .maybeSingle<{ brief_credits_used: number; plan: string }>();
+    .maybeSingle<{
+      brief_credits_used: number;
+      plan: string;
+      comp_brief_credits: number | null;
+    }>();
   if (org) {
-    await admin
-      .from("organisations")
-      .update({ brief_credits_used: (org.brief_credits_used ?? 0) + 1 })
-      .eq("id", project.org_id);
+    const compRemaining = Math.max(0, org.comp_brief_credits ?? 0);
+    if (compRemaining > 0) {
+      await admin
+        .from("organisations")
+        .update({ comp_brief_credits: compRemaining - 1 })
+        .eq("id", project.org_id);
+    } else {
+      await admin
+        .from("organisations")
+        .update({ brief_credits_used: (org.brief_credits_used ?? 0) + 1 })
+        .eq("id", project.org_id);
+    }
   }
 
   // For agency-tier orgs, also bump the per-project counter IF a row

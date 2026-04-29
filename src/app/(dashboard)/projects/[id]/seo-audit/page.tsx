@@ -407,9 +407,16 @@ export default function SeoAuditPage() {
                     )}
                   </Button>
                 ) : (
-                  <Button disabled title="Stripe checkout ships in Phase 2b">
-                    Buy audit (€49) — coming soon
-                  </Button>
+                  // Per-audit one-off €49 purchase isn't wired to
+                  // Stripe yet — until then we nudge the customer to
+                  // upgrade their plan, which is the cheaper path
+                  // anyway once they're running ≥ 1 audit/month.
+                  <a href="/pricing">
+                    <Button>
+                      Upgrade for included audits
+                      <ArrowRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </a>
                 )}
                 {!websiteUrl && (
                   <p className="text-xs text-text-muted">

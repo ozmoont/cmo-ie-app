@@ -12,7 +12,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ScanSearch, BarChart3, Users, Sparkles, ShieldCheck } from "lucide-react";
+import { ScanSearch, BarChart3, Users, Sparkles, ShieldCheck, Building2 } from "lucide-react";
 import { requireAdmin } from "@/lib/admin-auth";
 import { AdminOpsClient } from "./AdminOpsClient";
 import { AdminDashboard } from "./admin-dashboard";
@@ -95,6 +95,11 @@ export default async function AdminOpsPage() {
             href="/admin/admins"
             icon={<ShieldCheck className="h-4 w-4" />}
             label="Admins"
+          />
+          <AdminLink
+            href="/admin/orgs"
+            icon={<Building2 className="h-4 w-4" />}
+            label="Orgs (comps)"
           />
         </nav>
 
