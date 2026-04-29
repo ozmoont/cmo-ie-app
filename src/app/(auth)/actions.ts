@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAdminEmail } from "@/lib/admin-auth";
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
@@ -17,6 +18,14 @@ export async function login(formData: FormData) {
 
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // CMO.ie super-admins (email in CMO_ADMIN_EMAILS) land on /admin
+  // instead of the customer dashboard. They can still navigate to
+  // /dashboard manually if they want to use the product as a customer
+  // (eating dogfood); this just changes the default landing.
+  if (isAdminEmail(email)) {
+    redirect("/admin");
   }
 
   // Check if user has any projects
