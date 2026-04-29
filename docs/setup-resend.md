@@ -92,15 +92,19 @@ Repeat for `cmo-ie-preview` (Preview environment on Vercel) and `cmo-ie-developm
 
 ---
 
-## Step 4 — choose the from-addresses
+## Step 4 — choose the from-address
 
-Default we want CMO.ie sending from:
+CMO.ie sends every transactional email from a single address:
 
-- **Newsletter confirmations:** `hello@cmo.ie`. Friendly, replyable, customer expects a human.
-- **Monthly playbooks:** `playbook@cmo.ie`. Subject-line scoped, lets customers filter.
-- **Transactional (future):** `noreply@cmo.ie`. Receipts, password resets.
+```
+playbook@cmo.ie
+```
 
-These don't need separate Resend domains — just different `from` values when calling the API. Whoever wires the dispatcher (Phase B) will plumb these as env vars; for Phase A, just confirm Resend allows arbitrary local-parts on the verified domain (it does).
+One address keeps things simple — easier brand recall for customers, easier inbox filtering, fewer addresses for us to monitor for replies. Reply-to is the same, so a customer responding to a confirmation or a playbook lands in one inbox.
+
+When CMO.ie scales to multiple email categories (transactional receipts, team invites, etc.) we may split addresses; for v1, everything is `playbook@cmo.ie`.
+
+Resend doesn't need a separate domain or alias for this — the address just appears in the `from` field of API calls. Confirm in Resend that arbitrary local-parts are allowed on the verified domain (they are by default).
 
 ---
 
@@ -114,9 +118,9 @@ From the Vercel dashboard (https://vercel.com/og-6054s-projects/cmo-ie-app/setti
 |---|---|---|
 | `RESEND_API_KEY` | `re_...` (from Step 3) | Production |
 | `RESEND_API_KEY` | `re_...` (preview key) | Preview |
-| `RESEND_FROM_EMAIL` | `hello@cmo.ie` | Production, Preview |
+| `RESEND_FROM_EMAIL` | `playbook@cmo.ie` | Production, Preview |
 | `RESEND_FROM_NAME` | `CMO.ie` | Production, Preview |
-| `RESEND_REPLY_TO` | `hello@cmo.ie` | Production, Preview |
+| `RESEND_REPLY_TO` | `playbook@cmo.ie` | Production, Preview |
 
 Or via CLI from `~/Projects/cmo-ie`:
 
@@ -128,7 +132,7 @@ npx vercel env add RESEND_API_KEY preview
 # paste the preview key when prompted
 
 npx vercel env add RESEND_FROM_EMAIL production
-# value: hello@cmo.ie
+# value: playbook@cmo.ie
 # (repeat for preview)
 
 npx vercel env add RESEND_FROM_NAME production
@@ -136,7 +140,7 @@ npx vercel env add RESEND_FROM_NAME production
 # (repeat for preview)
 
 npx vercel env add RESEND_REPLY_TO production
-# value: hello@cmo.ie
+# value: playbook@cmo.ie
 # (repeat for preview)
 ```
 
@@ -162,7 +166,7 @@ If this feels out of scope, leave it for Howl. The dispatcher in Phase B can sti
 Resend has a built-in tester. From their dashboard:
 
 1. Sidebar → **Emails** → **Send Test Email**.
-2. From: `hello@cmo.ie`.
+2. From: `playbook@cmo.ie`.
 3. To: your own email.
 4. Subject: `Resend test from cmo.ie`.
 5. Body: anything. Click Send.
