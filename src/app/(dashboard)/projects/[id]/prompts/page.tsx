@@ -600,6 +600,28 @@ export default function PromptsPage() {
           <p className="text-xs font-mono text-text-muted">
             {prompts.length}/50 on your plan
           </p>
+          {/* Phase 6 metadata legend — explains the Importance + Google
+              query columns shown under each prompt. Only renders if
+              at least one prompt has the metadata, so projects that
+              haven't run the batch generator yet stay clean. */}
+          {prompts.some(
+            (p) => p.importance_score || p.google_query_mirror
+          ) && (
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              <span className="font-semibold text-text-secondary">
+                Importance
+              </span>{" "}
+              is how representative the prompt is of real customer
+              demand (5 = high-volume / high-intent, 1 = niche edge
+              case).{" "}
+              <span className="font-semibold text-text-secondary">
+                Google query
+              </span>{" "}
+              is the closest plain-English search a buyer would type for
+              the same intent — useful for cross-referencing keyword
+              volume in tools like Google Keyword Planner.
+            </p>
+          )}
         </div>
         <div className="col-span-12 md:col-span-9 max-w-3xl">
           {loading ? (
@@ -636,20 +658,25 @@ export default function PromptsPage() {
                     {/* Phase 6 — AdWords-style metadata strip. Renders
                         only when at least one of importance / mirror
                         is present; legacy prompts stay clean.
-                        Importance is a 5-dot rating; mirror is a
-                        monospace search-style fragment. */}
+                        Each value is labelled inline ("Importance",
+                        "Google query") because the bare numbers /
+                        keyword fragments confused users — see the
+                        legend above the list for the full key. */}
                     {(prompt.importance_score ||
                       prompt.google_query_mirror) && (
-                      <div className="flex items-center gap-3 text-xs text-text-muted">
+                      <div className="flex items-center gap-4 text-xs text-text-muted">
                         {prompt.importance_score ? (
                           <span
                             className="inline-flex items-center gap-1.5"
                             title={
                               prompt.importance_rationale
                                 ? `Importance ${prompt.importance_score}/5 — ${prompt.importance_rationale}`
-                                : `Importance ${prompt.importance_score}/5`
+                                : `Importance ${prompt.importance_score}/5 (5 = high-volume / high-intent, 1 = niche edge case)`
                             }
                           >
+                            <span className="uppercase tracking-wider text-[10px]">
+                              Importance
+                            </span>
                             <ImportanceDots
                               score={prompt.importance_score}
                             />
@@ -659,9 +686,17 @@ export default function PromptsPage() {
                           </span>
                         ) : null}
                         {prompt.google_query_mirror ? (
-                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-text-muted truncate">
-                            <Search className="h-3 w-3 shrink-0" />
-                            {prompt.google_query_mirror}
+                          <span
+                            className="inline-flex items-center gap-1 truncate"
+                            title="The closest plain-English Google search query for this prompt — useful for cross-referencing keyword volume."
+                          >
+                            <span className="uppercase tracking-wider text-[10px]">
+                              Google query
+                            </span>
+                            <Search className="h-3 w-3 shrink-0 ml-1" />
+                            <span className="font-mono text-[11px] truncate">
+                              {prompt.google_query_mirror}
+                            </span>
                           </span>
                         ) : null}
                       </div>
