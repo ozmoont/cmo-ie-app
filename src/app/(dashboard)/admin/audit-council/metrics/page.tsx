@@ -29,7 +29,7 @@ export default async function AuditCouncilMetricsPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if (!isAdminUser(user)) redirect("/");
+  if (!(await isAdminUser(user))) redirect("/");
 
   return (
     <DashboardShell orgName="CMO.ie" userEmail={user.email}>

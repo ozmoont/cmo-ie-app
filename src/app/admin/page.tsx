@@ -12,7 +12,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ScanSearch, BarChart3, Users, Sparkles } from "lucide-react";
+import { ScanSearch, BarChart3, Users, Sparkles, ShieldCheck } from "lucide-react";
 import { requireAdmin } from "@/lib/admin-auth";
 import { AdminOpsClient } from "./AdminOpsClient";
 import { AdminDashboard } from "./admin-dashboard";
@@ -90,6 +90,11 @@ export default async function AdminOpsPage() {
             href="/admin/skills"
             icon={<Sparkles className="h-4 w-4" />}
             label="Skills"
+          />
+          <AdminLink
+            href="/admin/admins"
+            icon={<ShieldCheck className="h-4 w-4" />}
+            label="Admins"
           />
         </nav>
 

@@ -41,7 +41,11 @@ describe("isAdminEmail", () => {
   });
 });
 
-describe("isAdminUser", () => {
+describe("isAdminUser (env-bootstrap path)", () => {
+  // We only test the env-list bootstrap path here. The DB-backed
+  // path (profiles.is_super_admin) requires a Supabase admin client;
+  // it's covered by integration tests against a live test DB rather
+  // than mocking the client surface.
   const ORIGINAL = process.env.CMO_ADMIN_EMAILS;
   beforeEach(() => {
     process.env.CMO_ADMIN_EMAILS = "odhran@howl.ie";
@@ -50,17 +54,13 @@ describe("isAdminUser", () => {
     process.env.CMO_ADMIN_EMAILS = ORIGINAL;
   });
 
-  it("returns true for a user whose email is listed", () => {
+  it("returns true for a user whose email is listed", async () => {
     const user = { email: "odhran@howl.ie" } as never;
-    expect(isAdminUser(user)).toBe(true);
+    expect(await isAdminUser(user)).toBe(true);
   });
-  it("returns false for an unlisted user", () => {
-    const user = { email: "nope@example.com" } as never;
-    expect(isAdminUser(user)).toBe(false);
-  });
-  it("returns false for null / missing email", () => {
-    expect(isAdminUser(null)).toBe(false);
-    expect(isAdminUser(undefined)).toBe(false);
-    expect(isAdminUser({ email: null } as never)).toBe(false);
+  it("returns false for null / missing email", async () => {
+    // A missing user should short-circuit before any DB call.
+    expect(await isAdminUser(null)).toBe(false);
+    expect(await isAdminUser(undefined)).toBe(false);
   });
 });
