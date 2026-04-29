@@ -7,6 +7,7 @@ import { PricingCards } from "@/components/dashboard/pricing-cards";
 import { CreditsBadge } from "@/components/dashboard/credits-badge";
 import { DeleteAccountButton } from "@/components/dashboard/delete-account-button";
 import { TeamSection } from "@/components/dashboard/team-section";
+import { NotificationToggle } from "@/components/settings/notification-toggle";
 import { AlertCircle, ArrowRight, KeyRound, Mail, Users2 } from "lucide-react";
 import Link from "next/link";
 
@@ -314,6 +315,36 @@ export default async function SettingsPage() {
             </div>
             <ArrowRight className="h-4 w-4 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
           </Link>
+        </div>
+      </section>
+
+      {/* ── Notifications ──
+          Per-user toggles. Defaults are opt-in (notify_on_scan = true)
+          so customers get value from the run engine without remembering
+          to turn anything on. */}
+      <section className="grid grid-cols-12 gap-6 md:gap-10 py-10 md:py-14 border-t border-border">
+        <div className="col-span-12 md:col-span-3 space-y-2">
+          <p className="text-xs uppercase tracking-[0.2em] text-emerald-dark font-semibold flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="inline-block w-4 h-[2px] bg-emerald-dark"
+            />
+            Notifications
+          </p>
+          <p className="text-sm text-text-secondary leading-relaxed">
+            How CMO.ie reaches you. Everything is per-user, not org-wide
+            — your teammates manage their own preferences.
+          </p>
+        </div>
+        <div className="col-span-12 md:col-span-9 max-w-2xl">
+          <NotificationToggle
+            field="notify_on_scan"
+            initial={
+              (profile as { notify_on_scan?: boolean })?.notify_on_scan ?? true
+            }
+            label="Email me when scans complete"
+            description="One email per completed daily run, with the visibility delta + top changes. Pro plans run 30 scans/month — turn off if you'd rather check the dashboard yourself."
+          />
         </div>
       </section>
 

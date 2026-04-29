@@ -37,6 +37,7 @@ import type { AIModel, Prompt, Competitor, Project } from "@/lib/types";
 import { MODEL_LABELS } from "@/lib/types";
 import { logAiUsage } from "@/lib/ai-usage-logger";
 import type { Provider } from "@/lib/ai-pricing";
+import { dispatchScanCompletionEmails } from "@/lib/email/scan-completion";
 
 // AIModel (the internal union — "claude", "chatgpt", etc.) → ai_usage_events
 // provider enum. Keep in sync with migration 020.
@@ -808,6 +809,17 @@ export async function executeRun(
         completed_at: new Date().toISOString(),
       })
       .eq("id", runId);
+
+    // Fire scan-completion emails to every team member who hasn't
+    // opted out. Non-blocking — the dispatcher logs its own errors
+    // to scan_email_log and never throws back to us. If Resend isn't
+    // wired (no RESEND_API_KEY), the dispatcher silently no-ops.
+    void dispatchScanCompletionEmails(runId).catch((err) => {
+      console.error(
+        `[run-engine ${runId}] scan-completion email dispatch failed:`,
+        err
+      );
+    });
 
     const successResults = allResults.filter(
       (r) => !r.response_snippet.startsWith("[Error")

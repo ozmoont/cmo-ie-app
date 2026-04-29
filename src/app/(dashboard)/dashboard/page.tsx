@@ -9,7 +9,9 @@ import {
   computeVisibilityScore,
 } from "@/lib/queries";
 import { MODEL_LABELS } from "@/lib/types";
+import type { Organisation } from "@/lib/types";
 import { relativeTime, classifyDelta } from "@/lib/format";
+import { computeNextScanEta } from "@/lib/scan-schedule";
 import { DashboardShell } from "@/components/dashboard/shell";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Plus } from "lucide-react";
@@ -50,8 +52,12 @@ export default async function DashboardPage() {
       const delta = score - weekAgoScore;
       const lastScannedAt =
         runs[0]?.completed_at ?? runs[0]?.created_at ?? null;
+      const nextScan = computeNextScanEta({
+        plan: (org?.plan ?? "trial") as Organisation["plan"],
+        lastRunStartedAt: runs[0]?.created_at ?? null,
+      });
 
-      return { ...project, score, delta, lastScannedAt };
+      return { ...project, score, delta, lastScannedAt, nextScan };
     })
   );
 
@@ -255,6 +261,17 @@ export default async function DashboardPage() {
                           <span className="text-text-muted">
                             Scanned {relativeTime(project.lastScannedAt)}
                           </span>
+                          {project.nextScan.next_scan_at && (
+                            <>
+                              <span className="mx-2 text-text-muted">·</span>
+                              <span
+                                className="text-text-muted"
+                                title={`${project.nextScan.cadence_label} cadence on your ${org?.plan ?? "trial"} plan`}
+                              >
+                                Next scan {project.nextScan.relative}
+                              </span>
+                            </>
+                          )}
                         </p>
                       </div>
 
