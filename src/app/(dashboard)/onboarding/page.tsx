@@ -212,15 +212,19 @@ export default function OnboardingPage() {
 
   const addSuggestion = (s: PromptItem) => {
     if (!prompts.some((p) => p.text === s.text)) {
-      setPrompts((prev) => [...prev, s]);
+      // Prepend so the most-recently-added prompt is at the top of
+      // the active list. Users complained that adds appearing at the
+      // bottom felt invisible — they had to scroll past every seed
+      // prompt to confirm their new one landed.
+      setPrompts((prev) => [s, ...prev]);
     }
   };
 
   const addManualPrompt = () => {
     if (newPrompt.trim()) {
       setPrompts((prev) => [
-        ...prev,
         { text: newPrompt.trim(), category: "awareness" },
+        ...prev,
       ]);
       setNewPrompt("");
     }
@@ -531,7 +535,8 @@ export default function OnboardingPage() {
                     onClick={addManualPrompt}
                     disabled={!newPrompt.trim()}
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add prompt
                   </Button>
                 </div>
               </div>
@@ -591,10 +596,22 @@ export default function OnboardingPage() {
                               <Badge variant={s.category} className="text-[10px]">
                                 {s.category}
                               </Badge>
+                              {/* Explicit label rather than a bare
+                                  icon — feedback was that lone "+" /
+                                  "✓" glyphs read as decoration, not
+                                  buttons. The whole row remains
+                                  clickable; this is just the
+                                  affordance hint. */}
                               {added ? (
-                                <Check className="h-4 w-4 text-emerald-dark" />
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-dark">
+                                  <Check className="h-3.5 w-3.5" />
+                                  Added
+                                </span>
                               ) : (
-                                <Plus className="h-4 w-4 text-text-muted" />
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-text-secondary">
+                                  <Plus className="h-3.5 w-3.5" />
+                                  Add
+                                </span>
                               )}
                             </div>
                           </button>
