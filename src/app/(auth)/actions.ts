@@ -158,3 +158,78 @@ export async function logout() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+/**
+ * Request a password-reset email.
+ *
+ * Supabase emails the user a magic link of the form
+ *   https://{site}/auth/callback?code=...&next=/reset-password
+ * Our existing /auth/callback route exchanges the code for a session
+ * and redirects to /reset-password where the user picks a new
+ * password.
+ *
+ * We always redirect back to /forgot-password?status=sent regardless
+ * of whether the email exists in our DB — exposing "no such user"
+ * leaks account-enumeration; the user can't tell whether the email
+ * was real, only that they should check their inbox.
+ */
+export async function requestPasswordReset(formData: FormData) {
+  const supabase = await createClient();
+  const email = (formData.get("email") as string)?.trim();
+  if (!email || !email.includes("@")) {
+    redirect(
+      `/forgot-password?error=${encodeURIComponent(
+        "Please enter a valid email address."
+      )}`
+    );
+  }
+
+  const siteUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
+    "https://www.cmo.ie";
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${siteUrl}/auth/callback?next=/reset-password`,
+  });
+  if (error) {
+    // Log but don't surface to user — see docstring on enumeration.
+    console.error("resetPasswordForEmail error:", error);
+  }
+  redirect("/forgot-password?status=sent");
+}
+
+/**
+ * Update the signed-in user's password to a new value. Called from
+ * /reset-password after the recovery link has been exchanged for a
+ * session. If no session is present, sends them back to /login.
+ */
+export async function setNewPassword(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login?error=session_expired");
+  }
+
+  const password = (formData.get("password") as string) ?? "";
+  if (password.length < 8) {
+    redirect(
+      `/reset-password?error=${encodeURIComponent(
+        "Password must be at least 8 characters."
+      )}`
+    );
+  }
+  const confirm = (formData.get("confirm") as string) ?? "";
+  if (password !== confirm) {
+    redirect(
+      `/reset-password?error=${encodeURIComponent("Passwords don't match.")}`
+    );
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    redirect(`/reset-password?error=${encodeURIComponent(error.message)}`);
+  }
+  redirect("/dashboard?password_reset=ok");
+}
