@@ -1,0 +1,28 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 32 32"
+  width="32"
+  height="32"
+>
+  <!--
+    CMO.ie favicon. Next.js 16 auto-serves this from /icon at 32×32
+    to every modern browser. The legacy src/app/favicon.ico stays in
+    place as the fallback for older browsers + tools that don't read
+    SVG icons.
+
+    Visual: solid emerald-dark rounded square (matching the brand's
+    kicker accent) with a bold white "C" anchor letter and a small
+    dot in the bottom-right that reads as the ".ie" half of the
+    domain when squinted at. Reads cleanly at 16px and scales without
+    artefacting at 192px+ for the address bar / pinned tab.
+
+    Colours hard-coded rather than CSS-variable referenced — favicons
+    render outside the Tailwind/CSS pipeline.
+  -->
+  <rect width="32" height="32" rx="7" fill="#1a4a2a" />
+  <path
+    d="M22.5 11.4c-1.4-1.6-3.5-2.6-5.9-2.6-4.3 0-7.8 3.4-7.8 7.6 0 4.2 3.5 7.6 7.8 7.6 2.4 0 4.5-1 5.9-2.6l-2.5-2.1c-.9 1-2.1 1.6-3.4 1.6-2.4 0-4.4-2-4.4-4.5s2-4.5 4.4-4.5c1.3 0 2.5.6 3.4 1.6l2.5-2.1z"
+    fill="#ffffff"
+  />
+  <circle cx="24.5" cy="24.5" r="2" fill="#ffffff" />
+</svg>

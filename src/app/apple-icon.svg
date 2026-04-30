@@ -1,0 +1,19 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 180 180"
+  width="180"
+  height="180"
+>
+  <!--
+    Apple touch icon — what shows when someone "Add to Home Screen"
+    on iOS. Bigger viewBox than icon.svg (180×180 is Apple's
+    recommended size) so the C + dot read crisply on a phone home
+    screen. Same brand visual as icon.svg, scaled.
+  -->
+  <rect width="180" height="180" rx="40" fill="#1a4a2a" />
+  <path
+    d="M127 64c-8-9-20-15-33-15-24 0-44 19-44 41s20 41 44 41c13 0 25-6 33-15l-14-12c-5 6-12 9-19 9-13 0-25-11-25-23s12-23 25-23c7 0 14 3 19 9l14-12z"
+    fill="#ffffff"
+  />
+  <circle cx="138" cy="138" r="12" fill="#ffffff" />
+</svg>
