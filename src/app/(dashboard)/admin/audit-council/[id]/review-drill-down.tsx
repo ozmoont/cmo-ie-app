@@ -392,11 +392,13 @@ function DecisionPanel({
   const [notes, setNotes] = useState(review.ops_notes ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const submit = async () => {
     if (!decision) return;
     setSaving(true);
     setError(null);
+    setSavedAt(null);
     try {
       const res = await fetch(
         `/api/admin/audit-council/reviews/${review.id}/decide`,
@@ -414,6 +416,12 @@ function DecisionPanel({
             : `HTTP ${res.status}`
         );
       }
+      // Record the save time locally so the success message persists
+      // even after onSaved() refreshes the parent payload. The
+      // "Last decided …" line above gets repopulated from the server,
+      // but this near-the-button confirmation is what gives the
+      // operator immediate "yes, your click did something" feedback.
+      setSavedAt(new Date().toLocaleString("en-IE"));
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
@@ -435,16 +443,19 @@ function DecisionPanel({
       <div className="grid grid-cols-3 gap-1.5">
         <DecisionButton
           label="Approve"
+          tooltip="You agree with the council — the issue is real. Records 'approved' on the audit log; no customer-facing change."
           active={decision === "approved"}
           onClick={() => setDecision("approved")}
         />
         <DecisionButton
           label="Override"
+          tooltip="You disagree with the council — the artifact is fine. Records 'overridden' on the audit log; no customer-facing change."
           active={decision === "overridden"}
           onClick={() => setDecision("overridden")}
         />
         <DecisionButton
           label="Regenerate"
+          tooltip="Flag the source generator for human review. Records 'mark_regenerate' on the audit log; no automatic regeneration in v1."
           active={decision === "mark_regenerate"}
           onClick={() => setDecision("mark_regenerate")}
         />
@@ -452,7 +463,7 @@ function DecisionPanel({
       <textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        placeholder="Optional notes on the decision (why you overrode, what to fix in the generator, etc.)"
+        placeholder="Reason for the decision (e.g. 'Verified with Bullet — they do hold this status' / 'Source prompt needs tighter industry-lock')."
         rows={3}
         className="w-full text-sm rounded-md border border-border bg-surface px-3 py-2 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-emerald-dark/30 focus:border-emerald-dark resize-y"
       />
@@ -460,6 +471,12 @@ function DecisionPanel({
         <p className="text-xs text-danger flex items-start gap-1">
           <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
           {error}
+        </p>
+      )}
+      {savedAt && !error && (
+        <p className="text-xs text-emerald-dark flex items-start gap-1">
+          <CheckCircle2 className="h-3 w-3 mt-0.5 shrink-0" />
+          Saved at {savedAt}. Decision and note recorded.
         </p>
       )}
       <Button
@@ -475,22 +492,59 @@ function DecisionPanel({
           "Record decision"
         )}
       </Button>
+
+      {/* ── What each decision does ──
+          Permanent footer explainer so admins always know the
+          mechanical effect of clicking a button. Phase 7 v1 is
+          observation-only: every decision is metadata, not a
+          downstream trigger. We'll revisit when v2 wires up
+          auto-block / auto-regenerate. */}
+      <div className="border-t border-border pt-3 mt-3 space-y-2 text-xs text-text-muted leading-relaxed">
+        <p className="text-[10px] uppercase tracking-[0.15em] text-text-muted font-semibold">
+          What happens next?
+        </p>
+        <p>
+          v1 is observation-only. Whichever button you pick, the result
+          is the same mechanically: a row in <span className="font-mono">audit_reviews</span>{" "}
+          updates with your decision, your note, your email, and the
+          timestamp. Nothing changes on the customer side — the brand
+          profile / audit / playbook the customer sees is unchanged.
+        </p>
+        <p>
+          Use the decisions to{" "}
+          <span className="text-text-secondary font-medium">build a record</span>{" "}
+          of when the council was right vs wrong. After 4 weeks of
+          data, we&apos;ll decide which categories of flag should
+          start auto-blocking customer rendering or auto-regenerating
+          the artifact. Until then, your decision is signal, not action.
+        </p>
+        <p>
+          If a flagged claim genuinely needs to come out of the
+          customer-facing artifact, that&apos;s a manual edit on the
+          source — e.g. for a brand profile, edit it in{" "}
+          <span className="font-mono">/projects/[id]/brand</span>. Recording
+          a decision here doesn&apos;t edit the artifact.
+        </p>
+      </div>
     </div>
   );
 }
 
 function DecisionButton({
   label,
+  tooltip,
   active,
   onClick,
 }: {
   label: string;
+  tooltip: string;
   active: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
+      title={tooltip}
       className={`text-xs px-2 py-1.5 rounded border font-medium transition-colors ${
         active
           ? "border-emerald-dark bg-emerald-dark/10 text-emerald-dark"
