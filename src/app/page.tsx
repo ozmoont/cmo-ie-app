@@ -280,15 +280,27 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Social Proof ── */}
+      {/* ── Social Proof ──
+          Real Irish brand names rather than the previous placeholder
+          set ("Brand Co", "Dublin Agency", etc.). Text-only — swap
+          for SVG logos when trademark permission is confirmed. */}
       <section className="px-4 md:px-8 py-12 border-y border-border bg-surface">
         <div className="max-w-5xl mx-auto text-center">
           <p className="text-xs text-emerald-dark mb-8 uppercase tracking-[0.2em] font-semibold">
             Built for Irish brands, agencies, and marketing teams
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12 opacity-40">
-            {["Brand Co", "Dublin Agency", "Irish Retail", "Tech Ireland", "Health.ie", "Finance.ie"].map((name) => (
-              <span key={name} className="text-lg font-semibold text-text-secondary">{name}</span>
+          <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12 opacity-60">
+            {[
+              "Karo.ie",
+              "Glenveagh Homes",
+              "Boards.ie",
+              "Savenet",
+              "Iconic Offices",
+              "iCabbi",
+            ].map((name) => (
+              <span key={name} className="text-lg font-semibold text-text-secondary">
+                {name}
+              </span>
             ))}
           </div>
         </div>
